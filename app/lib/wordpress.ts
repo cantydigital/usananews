@@ -108,3 +108,40 @@ export async function getSiteLogo(): Promise<SiteLogo | null> {
     return null;
   }
 }
+
+type AnnouncementsResponse = {
+  siteSettings: {
+    siteSettingsFields: {
+      announcements: { title: string | null }[] | null;
+    } | null;
+  } | null;
+};
+
+const ANNOUNCEMENTS_QUERY = /* GraphQL */ `
+  query Announcements {
+    siteSettings {
+      siteSettingsFields {
+        announcements {
+          title
+        }
+      }
+    }
+  }
+`;
+
+/**
+ * Announcement titles from the ACF "Site Settings" repeater.
+ * Returns null if WordPress can't be reached, and [] if the repeater is empty.
+ */
+export async function getAnnouncements(): Promise<string[] | null> {
+  try {
+    const data = await wpQuery<AnnouncementsResponse>(ANNOUNCEMENTS_QUERY, {}, {
+      tags: ["wordpress", "site-settings"],
+    });
+    const rows = data.siteSettings?.siteSettingsFields?.announcements ?? [];
+    return rows.map((row) => row.title?.trim() ?? "").filter(Boolean);
+  } catch (error) {
+    console.warn("Falling back to default announcements:", (error as Error).message);
+    return null;
+  }
+}

@@ -1,6 +1,6 @@
 import Image from "next/image";
 import Link from "next/link";
-import { getSiteLogo } from "@/app/lib/wordpress";
+import { getAnnouncements, getSiteLogo } from "@/app/lib/wordpress";
 import type { ComponentType, ReactNode, SVGProps } from "react";
 import AnnouncementBar from "./AnnouncementBar";
 import Logo from "./Logo";
@@ -30,6 +30,7 @@ export const defaultSocialLinks: SocialLink[] = [
   { network: "youtube", href: "https://youtube.com" },
 ];
 
+/** Shown only if WordPress can't be reached. */
 export const defaultAnnouncements = [
   "Free Standard Post Orders $125+",
   "Australian owned & operated",
@@ -38,6 +39,7 @@ export const defaultAnnouncements = [
 type HeaderProps = {
   navLinks?: NavLink[];
   socialLinks?: SocialLink[];
+  /** Defaults to the WordPress Site Settings announcements. */
   announcements?: string[];
   /** Custom logo; defaults to the WordPress Site Settings logo, then the badge placeholder. */
   logo?: ReactNode;
@@ -64,10 +66,15 @@ async function SiteLogo() {
   );
 }
 
+async function SiteAnnouncements() {
+  const announcements = await getAnnouncements();
+  return <AnnouncementBar messages={announcements ?? defaultAnnouncements} />;
+}
+
 export default function Header({
   navLinks = defaultNavLinks,
   socialLinks = defaultSocialLinks,
-  announcements = defaultAnnouncements,
+  announcements,
   logo = <SiteLogo />,
 }: HeaderProps) {
   return (
@@ -94,7 +101,11 @@ export default function Header({
             })}
           </ul>
 
-          <AnnouncementBar messages={announcements} />
+          {announcements ? (
+            <AnnouncementBar messages={announcements} />
+          ) : (
+            <SiteAnnouncements />
+          )}
 
           {/* Empty column keeps the announcement centred */}
           <div aria-hidden className="hidden sm:block" />
