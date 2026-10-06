@@ -9,7 +9,7 @@ type QueryOptions = {
 export async function wpQuery<T>(
   query: string,
   variables: Record<string, unknown> = {},
-  { revalidate = 3600, tags = ["wordpress"] }: QueryOptions = {},
+  { revalidate = 300, tags = ["wordpress"] }: QueryOptions = {},
 ): Promise<T> {
   const url = process.env.WORDPRESS_GRAPHQL_URL;
   const username = process.env.WORDPRESS_USERNAME;
