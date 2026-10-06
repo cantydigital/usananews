@@ -3,7 +3,7 @@ export type NavLink = {
   href: string;
 };
 
-export type SocialNetwork = "facebook" | "instagram" | "youtube";
+export type SocialNetwork = "facebook" | "instagram" | "youtube" | "linkedin" | "x";
 
 export type SocialLink = {
   network: SocialNetwork;

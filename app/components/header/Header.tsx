@@ -1,18 +1,30 @@
 import Image from "next/image";
 import Link from "next/link";
-import { getAnnouncements, getSiteLogo } from "@/app/lib/wordpress";
+import { getAnnouncements, getSiteLogo, getSocialLinks } from "@/app/lib/wordpress";
 import type { ComponentType, ReactNode, SVGProps } from "react";
 import AnnouncementBar from "./AnnouncementBar";
 import Logo from "./Logo";
 import MobileMenu from "./MobileMenu";
 import NavLinks from "./NavLinks";
-import { FacebookIcon, InstagramIcon, SearchIcon, YoutubeIcon } from "./icons";
+import {
+  FacebookIcon,
+  InstagramIcon,
+  LinkedInIcon,
+  SearchIcon,
+  XIcon,
+  YoutubeIcon,
+} from "./icons";
 import type { NavLink, SocialLink, SocialNetwork } from "./types";
 
-const socialIcons: Record<SocialNetwork, ComponentType<SVGProps<SVGSVGElement>>> = {
-  facebook: FacebookIcon,
-  instagram: InstagramIcon,
-  youtube: YoutubeIcon,
+const socialNetworks: Record<
+  SocialNetwork,
+  { label: string; Icon: ComponentType<SVGProps<SVGSVGElement>> }
+> = {
+  facebook: { label: "Facebook", Icon: FacebookIcon },
+  instagram: { label: "Instagram", Icon: InstagramIcon },
+  youtube: { label: "YouTube", Icon: YoutubeIcon },
+  linkedin: { label: "LinkedIn", Icon: LinkedInIcon },
+  x: { label: "X", Icon: XIcon },
 };
 
 export const defaultNavLinks: NavLink[] = [
@@ -24,12 +36,6 @@ export const defaultNavLinks: NavLink[] = [
   { label: "Women's Health", href: "/womens-health" },
 ];
 
-export const defaultSocialLinks: SocialLink[] = [
-  { network: "facebook", href: "https://facebook.com" },
-  { network: "instagram", href: "https://instagram.com" },
-  { network: "youtube", href: "https://youtube.com" },
-];
-
 /** Shown only if WordPress can't be reached. */
 export const defaultAnnouncements = [
   "Free Standard Post Orders $125+",
@@ -38,6 +44,7 @@ export const defaultAnnouncements = [
 
 type HeaderProps = {
   navLinks?: NavLink[];
+  /** Defaults to the links set in WordPress Site Settings. */
   socialLinks?: SocialLink[];
   /** Defaults to the WordPress Site Settings announcements. */
   announcements?: string[];
@@ -66,6 +73,29 @@ async function SiteLogo() {
   );
 }
 
+function SocialLinkItems({ links }: { links: SocialLink[] }) {
+  return links.map(({ network, href }) => {
+    const { label, Icon } = socialNetworks[network];
+    return (
+      <li key={network}>
+        <a
+          href={href}
+          target="_blank"
+          rel="noopener noreferrer"
+          aria-label={label}
+          className="opacity-90 transition hover:opacity-100"
+        >
+          <Icon className="h-4 w-4" />
+        </a>
+      </li>
+    );
+  });
+}
+
+async function SiteSocialLinks() {
+  return <SocialLinkItems links={await getSocialLinks()} />;
+}
+
 async function SiteAnnouncements() {
   const announcements = await getAnnouncements();
   return <AnnouncementBar messages={announcements ?? defaultAnnouncements} />;
@@ -73,7 +103,7 @@ async function SiteAnnouncements() {
 
 export default function Header({
   navLinks = defaultNavLinks,
-  socialLinks = defaultSocialLinks,
+  socialLinks,
   announcements,
   logo = <SiteLogo />,
 }: HeaderProps) {
@@ -82,23 +112,9 @@ export default function Header({
       {/* Top announcement bar */}
       <div className="bg-[var(--header-brand)] text-white">
         <div className="mx-auto grid h-10 max-w-7xl grid-cols-1 sm:grid-cols-[1fr_auto_1fr] items-center gap-2 px-4 sm:px-6 lg:px-8">
+          {/* Always rendered so the announcement stays centred */}
           <ul className="hidden items-center gap-4 sm:flex">
-            {socialLinks.map(({ network, href }) => {
-              const Icon = socialIcons[network];
-              return (
-                <li key={network}>
-                  <a
-                    href={href}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    aria-label={network}
-                    className="opacity-90 transition hover:opacity-100"
-                  >
-                    <Icon className="h-4 w-4" />
-                  </a>
-                </li>
-              );
-            })}
+            {socialLinks ? <SocialLinkItems links={socialLinks} /> : <SiteSocialLinks />}
           </ul>
 
           {announcements ? (
