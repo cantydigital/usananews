@@ -1,4 +1,6 @@
+import Image from "next/image";
 import Link from "next/link";
+import { getSiteLogo } from "@/app/lib/wordpress";
 import type { ComponentType, ReactNode, SVGProps } from "react";
 import AnnouncementBar from "./AnnouncementBar";
 import Logo from "./Logo";
@@ -37,18 +39,36 @@ type HeaderProps = {
   navLinks?: NavLink[];
   socialLinks?: SocialLink[];
   announcements?: string[];
-  /** Custom logo; defaults to the badge placeholder. */
+  /** Custom logo; defaults to the WordPress Site Settings logo, then the badge placeholder. */
   logo?: ReactNode;
 };
 
 const iconButton =
   "inline-flex h-10 w-10 items-center justify-center rounded-full text-neutral-800 transition hover:bg-black/5";
 
+async function SiteLogo() {
+  const logo = await getSiteLogo();
+  if (!logo) return <Logo className="h-12 w-auto" />;
+
+  return (
+    <Image
+      src={logo.url}
+      alt={logo.alt}
+      width={logo.width}
+      height={logo.height}
+      priority
+      // The optimizer rejects SVGs by default; serve them as-is.
+      unoptimized={logo.mimeType === "image/svg+xml"}
+      className="h-12 w-auto"
+    />
+  );
+}
+
 export default function Header({
   navLinks = defaultNavLinks,
   socialLinks = defaultSocialLinks,
   announcements = defaultAnnouncements,
-  logo = <Logo className="h-12 w-auto" />,
+  logo = <SiteLogo />,
 }: HeaderProps) {
   return (
     <header className="relative z-30 w-full font-sans [--header-bg:#f7f6f3] [--header-brand:#534388]">
