@@ -29,7 +29,49 @@ export async function wpQuery<T>(
   )();
 }
 
+// The WordPress host runs out of database connections ("Error establishing a database
+// connection", HTTP 500) at around 20 simultaneous requests, which a parallel build easily
+// reaches. Each server process keeps at most this many requests in flight, and retries
+// server errors with backoff.
+const MAX_CONCURRENT_REQUESTS = 2;
+const RETRY_DELAYS_MS = [500, 1500, 3000, 6000];
+
+let activeRequests = 0;
+const waitingRequests: (() => void)[] = [];
+
+async function withRequestSlot<T>(run: () => Promise<T>): Promise<T> {
+  if (activeRequests < MAX_CONCURRENT_REQUESTS) {
+    activeRequests++;
+  } else {
+    // A finishing request hands its slot straight to the next one in line.
+    await new Promise<void>((resolve) => waitingRequests.push(resolve));
+  }
+  try {
+    return await run();
+  } finally {
+    const next = waitingRequests.shift();
+    if (next) next();
+    else activeRequests--;
+  }
+}
+
+/** A failure worth retrying: network errors, rate limiting and 5xx responses. */
+class TransientError extends Error {}
+
 async function requestWordPress<T>(query: string, variables: Record<string, unknown>): Promise<T> {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      return await withRequestSlot(() => sendRequest<T>(query, variables));
+    } catch (error) {
+      if (!(error instanceof TransientError) || attempt >= RETRY_DELAYS_MS.length) throw error;
+      // Wait outside the slot so other requests can use it; jitter spreads out the retries.
+      const delay = RETRY_DELAYS_MS[attempt] * (0.75 + Math.random() / 2);
+      await new Promise((resolve) => setTimeout(resolve, delay));
+    }
+  }
+}
+
+async function sendRequest<T>(query: string, variables: Record<string, unknown>): Promise<T> {
   const url = process.env.WORDPRESS_GRAPHQL_URL;
   const username = process.env.WORDPRESS_USERNAME;
   const password = process.env.WORDPRESS_APP_PASSWORD;
@@ -37,19 +79,31 @@ async function requestWordPress<T>(query: string, variables: Record<string, unkn
     throw new Error("WordPress env vars are not configured");
   }
 
-  const res = await fetch(url, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Basic ${Buffer.from(`${username}:${password}`).toString("base64")}`,
-    },
-    body: JSON.stringify({ query, variables }),
-    // Caching happens in wpQuery, after the response has been checked for errors.
-    cache: "no-store",
-  });
+  let res: Response;
+  try {
+    res = await fetch(url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Basic ${Buffer.from(`${username}:${password}`).toString("base64")}`,
+      },
+      body: JSON.stringify({ query, variables }),
+      // Caching happens in wpQuery, after the response has been checked for errors.
+      cache: "no-store",
+      signal: AbortSignal.timeout(20_000),
+    });
+  } catch (error) {
+    throw new TransientError(`WordPress request failed: ${(error as Error).message}`);
+  }
 
   if (!res.ok) {
-    throw new Error(`WordPress GraphQL request failed: ${res.status}`);
+    // WordPress explains server errors in a JSON body, e.g. {"message":"<h1>Error establishing…</h1>"}.
+    const detail = await res
+      .json()
+      .then((body: { message?: string }) => body.message?.replace(/<[^>]*>/g, "").trim())
+      .catch(() => undefined);
+    const message = `WordPress GraphQL request failed: ${res.status}${detail ? ` (${detail})` : ""}`;
+    throw res.status >= 500 || res.status === 429 ? new TransientError(message) : new Error(message);
   }
 
   const json = (await res.json()) as {
@@ -446,26 +500,25 @@ const POST_QUERY = /* GraphQL */ `
   ${POST_SUMMARY_FIELDS}
 `;
 
-/** A published post by slug, or null if there's no such post or WordPress can't be reached. */
+/**
+ * A published post by slug, or null when WordPress says there is no such post.
+ * Throws if WordPress can't be reached, so an outage is never mistaken for a missing post:
+ * a build fails instead of prerendering a 404, and a background refresh keeps the last good page.
+ */
 export async function getPost(slug: string): Promise<Post | null> {
-  try {
-    const data = await wpQuery<PostResponse>(POST_QUERY, { uri: `/${slug}/` }, {
-      tags: ["wordpress", "posts"],
-    });
-    const post = data.post;
-    if (!post) return null;
+  const data = await wpQuery<PostResponse>(POST_QUERY, { uri: `/${slug}/` }, {
+    tags: ["wordpress", "posts"],
+  });
+  const post = data.post;
+  if (!post) return null;
 
-    return {
-      ...toPostSummary(post),
-      content: post.content ?? "",
-      modified: post.modified,
-      readingTime: post.seo?.readingTime || null,
-      imageCaption: post.featuredImage?.node?.caption ? stripHtml(post.featuredImage.node.caption) || null : null,
-    };
-  } catch (error) {
-    console.warn(`Could not load post "${slug}":`, (error as Error).message);
-    return null;
-  }
+  return {
+    ...toPostSummary(post),
+    content: post.content ?? "",
+    modified: post.modified,
+    readingTime: post.seo?.readingTime || null,
+    imageCaption: post.featuredImage?.node?.caption ? stripHtml(post.featuredImage.node.caption) || null : null,
+  };
 }
 
 type PostSlugsResponse = { posts: { nodes: { slug: string }[] } | null };
