@@ -315,3 +315,40 @@ export async function getLatestPosts(
     return [];
   }
 }
+
+type SiteIndexingResponse = {
+  siteSettings: {
+    siteSettingsFields: {
+      siteIndexingStatus: string[] | null;
+    } | null;
+  } | null;
+};
+
+const SITE_INDEXING_QUERY = /* GraphQL */ `
+  query SiteIndexing {
+    siteSettings {
+      siteSettingsFields {
+        siteIndexingStatus
+      }
+    }
+  }
+`;
+
+/**
+ * Whether search engines may index the site, from the ACF "Site Indexing Status" select.
+ * Any "No Index"-style choice (e.g. "No Indexed", "noindex") blocks indexing.
+ * Returns true if the field is empty or WordPress can't be reached, so an outage can't de-index the site.
+ */
+export async function getSiteIndexable(): Promise<boolean> {
+  try {
+    const data = await wpQuery<SiteIndexingResponse>(SITE_INDEXING_QUERY, {}, {
+      tags: ["wordpress", "site-settings"],
+    });
+    const status = data.siteSettings?.siteSettingsFields?.siteIndexingStatus?.[0] ?? "";
+    // Match the choice whether ACF returns its label or its value.
+    return !status.toLowerCase().replace(/[^a-z]/g, "").startsWith("no");
+  } catch (error) {
+    console.warn("Falling back to indexable:", (error as Error).message);
+    return true;
+  }
+}
