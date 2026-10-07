@@ -16,7 +16,7 @@ import {
 } from "./icons";
 import type { NavLink, SocialLink, SocialNetwork } from "./types";
 
-const socialNetworks: Record<
+export const socialNetworks: Record<
   SocialNetwork,
   { label: string; Icon: ComponentType<SVGProps<SVGSVGElement>> }
 > = {
@@ -55,7 +55,7 @@ type HeaderProps = {
 const iconButton =
   "inline-flex h-10 w-10 items-center justify-center rounded-full text-neutral-800 transition hover:bg-black/5";
 
-async function SiteLogo() {
+export async function SiteLogo() {
   const logo = await getSiteLogo();
   if (!logo) return <Logo className="h-12 w-auto" />;
 
@@ -108,7 +108,7 @@ export default function Header({
   logo = <SiteLogo />,
 }: HeaderProps) {
   return (
-    <header className="relative z-30 w-full font-sans [--header-bg:#f7f6f3] [--header-brand:#534388]">
+    <header className="relative z-30 w-full font-sans">
       {/* Top announcement bar */}
       <div className="bg-[var(--header-brand)] text-white">
         <div className="mx-auto grid h-10 max-w-7xl grid-cols-1 sm:grid-cols-[1fr_auto_1fr] items-center gap-2 px-4 sm:px-6 lg:px-8">

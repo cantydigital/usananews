@@ -193,3 +193,125 @@ export async function getSocialLinks(): Promise<SocialLink[]> {
     return [];
   }
 }
+
+export type PostSummary = {
+  title: string;
+  href: string;
+  excerpt: string;
+  date: string;
+  commentCount: number;
+  category: string | null;
+  author: { name: string; avatarUrl: string | null };
+  image: { url: string; alt: string; width: number; height: number } | null;
+};
+
+type LatestPostsResponse = {
+  posts: {
+    nodes: {
+      title: string | null;
+      uri: string | null;
+      excerpt: string | null;
+      date: string;
+      commentCount: number | null;
+      categories: { nodes: { name: string }[] } | null;
+      author: { node: { name: string | null; avatar: { url: string | null } | null } | null } | null;
+      featuredImage: {
+        node: {
+          sourceUrl: string;
+          altText: string | null;
+          mediaDetails: { width: number | null; height: number | null } | null;
+        } | null;
+      } | null;
+    }[];
+  } | null;
+};
+
+const LATEST_POSTS_QUERY = /* GraphQL */ `
+  query LatestPosts($first: Int!, $category: String) {
+    posts(first: $first, where: { categoryName: $category }) {
+      nodes {
+        title
+        uri
+        excerpt
+        date
+        commentCount
+        categories(first: 1) {
+          nodes {
+            name
+          }
+        }
+        author {
+          node {
+            name
+            avatar {
+              url
+            }
+          }
+        }
+        featuredImage {
+          node {
+            sourceUrl
+            altText
+            mediaDetails {
+              width
+              height
+            }
+          }
+        }
+      }
+    }
+  }
+`;
+
+/** Turns a WordPress HTML excerpt into plain text. */
+function stripHtml(html: string) {
+  return html
+    .replace(/<[^>]*>/g, "")
+    .replace(/&#8217;/g, "’")
+    .replace(/&#8230;|\[&hellip;\]|&hellip;/g, "…")
+    .replace(/&amp;/g, "&")
+    .replace(/&nbsp;/g, " ")
+    .trim();
+}
+
+/**
+ * Most recent published posts, newest first, optionally limited to one category slug.
+ * Returns [] if WordPress can't be reached.
+ */
+export async function getLatestPosts(
+  first = 4,
+  { category }: { category?: string } = {},
+): Promise<PostSummary[]> {
+  try {
+    const data = await wpQuery<LatestPostsResponse>(LATEST_POSTS_QUERY, { first, category: category ?? null }, {
+      tags: ["wordpress", "posts"],
+    });
+
+    return (data.posts?.nodes ?? []).map((post) => {
+      const image = post.featuredImage?.node;
+      return {
+        title: post.title ?? "Untitled",
+        href: post.uri ?? "/",
+        excerpt: stripHtml(post.excerpt ?? ""),
+        date: post.date,
+        commentCount: post.commentCount ?? 0,
+        category: post.categories?.nodes[0]?.name ?? null,
+        author: {
+          name: post.author?.node?.name ?? "USANA News",
+          avatarUrl: post.author?.node?.avatar?.url ?? null,
+        },
+        image: image?.sourceUrl
+          ? {
+              url: image.sourceUrl,
+              alt: image.altText || post.title || "",
+              width: image.mediaDetails?.width || 1200,
+              height: image.mediaDetails?.height || 800,
+            }
+          : null,
+      };
+    });
+  } catch (error) {
+    console.warn("Falling back to placeholder posts:", (error as Error).message);
+    return [];
+  }
+}
