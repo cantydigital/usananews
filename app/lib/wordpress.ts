@@ -495,3 +495,58 @@ export async function getSiteInfo(): Promise<{ name: string; tagline: string | n
     return null;
   }
 }
+
+export type FeaturedCategory = {
+  label: string;
+  /** WordPress category slug. */
+  slug: string;
+};
+
+type FeaturedCategoriesResponse = {
+  homepageSettings: {
+    homepageSettingsFields: {
+      featuredCategories: {
+        nodes: { __typename: string; name: string | null; slug: string | null }[];
+      } | null;
+    } | null;
+  } | null;
+};
+
+const FEATURED_CATEGORIES_QUERY = /* GraphQL */ `
+  query FeaturedCategories {
+    homepageSettings {
+      homepageSettingsFields {
+        featuredCategories {
+          nodes {
+            __typename
+            name
+            slug
+          }
+        }
+      }
+    }
+  }
+`;
+
+/**
+ * Categories picked under "Featured Categories" on the ACF "Homepage Settings" options page, in order.
+ * Returns null if none are set or WordPress can't be reached.
+ */
+export async function getFeaturedCategories(): Promise<FeaturedCategory[] | null> {
+  try {
+    const data = await wpQuery<FeaturedCategoriesResponse>(FEATURED_CATEGORIES_QUERY, {}, {
+      tags: ["wordpress", "homepage-settings"],
+    });
+    const nodes = data.homepageSettings?.homepageSettingsFields?.featuredCategories?.nodes ?? [];
+    // The field can link any taxonomy; only categories can filter posts by categoryName.
+    const categories = nodes.flatMap((node) =>
+      node.__typename === "Category" && node.name && node.slug
+        ? [{ label: clean(node.name) ?? node.name, slug: node.slug }]
+        : [],
+    );
+    return categories.length ? categories : null;
+  } catch (error) {
+    console.warn("Falling back to default featured categories:", (error as Error).message);
+    return null;
+  }
+}
