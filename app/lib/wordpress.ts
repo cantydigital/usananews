@@ -1,5 +1,6 @@
 // Server-only: reads credentials from env vars that are never exposed to the browser.
 
+import { unstable_cache } from "next/cache";
 import type { SocialLink, SocialNetwork } from "@/app/components/header/types";
 
 type QueryOptions = {
@@ -8,11 +9,27 @@ type QueryOptions = {
   tags?: string[];
 };
 
+/**
+ * Runs a GraphQL query against WordPress. Only successful results are cached: WPGraphQL
+ * reports errors with HTTP 200, which the fetch cache would otherwise store and replay.
+ */
 export async function wpQuery<T>(
   query: string,
   variables: Record<string, unknown> = {},
   { revalidate = 300, tags = ["wordpress"] }: QueryOptions = {},
 ): Promise<T> {
+  // Skip the cache in dev so WordPress changes show up immediately.
+  if (process.env.NODE_ENV === "development") return requestWordPress<T>(query, variables);
+
+  // A thrown error leaves nothing in the cache, so the next render retries.
+  return unstable_cache(
+    () => requestWordPress<T>(query, variables),
+    ["wordpress-graphql", query, JSON.stringify(variables)],
+    { revalidate, tags },
+  )();
+}
+
+async function requestWordPress<T>(query: string, variables: Record<string, unknown>): Promise<T> {
   const url = process.env.WORDPRESS_GRAPHQL_URL;
   const username = process.env.WORDPRESS_USERNAME;
   const password = process.env.WORDPRESS_APP_PASSWORD;
@@ -27,8 +44,8 @@ export async function wpQuery<T>(
       Authorization: `Basic ${Buffer.from(`${username}:${password}`).toString("base64")}`,
     },
     body: JSON.stringify({ query, variables }),
-    // Skip the data cache in dev so WordPress changes show up immediately.
-    next: { revalidate: process.env.NODE_ENV === "development" ? 0 : revalidate, tags },
+    // Caching happens in wpQuery, after the response has been checked for errors.
+    cache: "no-store",
   });
 
   if (!res.ok) {
