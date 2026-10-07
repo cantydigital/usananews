@@ -1,6 +1,11 @@
 import { fillWithPlaceholders } from "@/app/components/posts";
 import { CategoryTabs, HeroBanner, PostGrid, PromoBanner } from "@/app/components/sections";
+import { seoMetadata } from "@/app/lib/seo";
 import { getLatestPosts } from "@/app/lib/wordpress";
+
+export function generateMetadata() {
+  return seoMetadata("/");
+}
 
 const HERO_COUNT = 4;
 const TOP_STORIES_COUNT = 4;
