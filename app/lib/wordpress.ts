@@ -222,74 +222,99 @@ export type PostSummary = {
   image: { url: string; alt: string; width: number; height: number } | null;
 };
 
-type LatestPostsResponse = {
-  posts: {
-    nodes: {
-      title: string | null;
-      uri: string | null;
-      excerpt: string | null;
-      date: string;
-      commentCount: number | null;
-      categories: { nodes: { name: string }[] } | null;
-      author: { node: { name: string | null; avatar: { url: string | null } | null } | null } | null;
-      featuredImage: {
-        node: {
-          sourceUrl: string;
-          altText: string | null;
-          mediaDetails: { width: number | null; height: number | null } | null;
-        } | null;
-      } | null;
-    }[];
+type PostSummaryNode = {
+  title: string | null;
+  uri: string | null;
+  excerpt: string | null;
+  date: string;
+  commentCount: number | null;
+  categories: { nodes: { name: string }[] } | null;
+  author: { node: { name: string | null; avatar: { url: string | null } | null } | null } | null;
+  featuredImage: {
+    node: {
+      sourceUrl: string;
+      altText: string | null;
+      mediaDetails: { width: number | null; height: number | null } | null;
+    } | null;
   } | null;
 };
 
-const LATEST_POSTS_QUERY = /* GraphQL */ `
-  query LatestPosts($first: Int!, $category: String) {
-    posts(first: $first, where: { categoryName: $category }) {
+/** Fields every post card needs; spread into any query that returns posts. */
+const POST_SUMMARY_FIELDS = /* GraphQL */ `
+  fragment PostSummaryFields on Post {
+    title
+    uri
+    excerpt
+    date
+    commentCount
+    categories(first: 1) {
       nodes {
-        title
-        uri
-        excerpt
-        date
-        commentCount
-        categories(first: 1) {
-          nodes {
-            name
-          }
+        name
+      }
+    }
+    author {
+      node {
+        name
+        avatar {
+          url
         }
-        author {
-          node {
-            name
-            avatar {
-              url
-            }
-          }
-        }
-        featuredImage {
-          node {
-            sourceUrl
-            altText
-            mediaDetails {
-              width
-              height
-            }
-          }
+      }
+    }
+    featuredImage {
+      node {
+        sourceUrl
+        altText
+        mediaDetails {
+          width
+          height
         }
       }
     }
   }
 `;
 
-/** Turns a WordPress HTML excerpt into plain text. */
+/** Turns WordPress HTML (excerpts, captions) into plain text. */
 function stripHtml(html: string) {
-  return html
-    .replace(/<[^>]*>/g, "")
-    .replace(/&#8217;/g, "’")
-    .replace(/&#8230;|\[&hellip;\]|&hellip;/g, "…")
-    .replace(/&amp;/g, "&")
-    .replace(/&nbsp;/g, " ")
-    .trim();
+  return decodeEntities(html.replace(/<[^>]*>/g, "").replace(/\[&hellip;\]|\[…\]/g, "…")).trim();
 }
+
+function toPostSummary(post: PostSummaryNode): PostSummary {
+  const image = post.featuredImage?.node;
+  return {
+    title: clean(post.title) ?? "Untitled",
+    // WordPress URIs end in "/"; Next.js serves (and links) paths without it.
+    href: post.uri?.replace(/\/+$/, "") || "/",
+    excerpt: stripHtml(post.excerpt ?? ""),
+    date: post.date,
+    commentCount: post.commentCount ?? 0,
+    category: clean(post.categories?.nodes[0]?.name),
+    author: {
+      name: post.author?.node?.name ?? "USANA News",
+      avatarUrl: post.author?.node?.avatar?.url ?? null,
+    },
+    image: image?.sourceUrl
+      ? {
+          url: image.sourceUrl,
+          alt: image.altText || clean(post.title) || "",
+          width: image.mediaDetails?.width || 1200,
+          height: image.mediaDetails?.height || 800,
+        }
+      : null,
+  };
+}
+
+type PostsResponse = { posts: { nodes: PostSummaryNode[] } | null };
+
+const LATEST_POSTS_QUERY = /* GraphQL */ `
+  query LatestPosts($first: Int!, $category: String) {
+    posts(first: $first, where: { categoryName: $category }) {
+      nodes {
+        ...PostSummaryFields
+      }
+    }
+  }
+  ${POST_SUMMARY_FIELDS}
+`;
 
 /**
  * Most recent published posts, newest first, optionally limited to one category slug.
@@ -300,35 +325,170 @@ export async function getLatestPosts(
   { category }: { category?: string } = {},
 ): Promise<PostSummary[]> {
   try {
-    const data = await wpQuery<LatestPostsResponse>(LATEST_POSTS_QUERY, { first, category: category ?? null }, {
+    const data = await wpQuery<PostsResponse>(LATEST_POSTS_QUERY, { first, category: category ?? null }, {
       tags: ["wordpress", "posts"],
     });
-
-    return (data.posts?.nodes ?? []).map((post) => {
-      const image = post.featuredImage?.node;
-      return {
-        title: post.title ?? "Untitled",
-        href: post.uri ?? "/",
-        excerpt: stripHtml(post.excerpt ?? ""),
-        date: post.date,
-        commentCount: post.commentCount ?? 0,
-        category: post.categories?.nodes[0]?.name ?? null,
-        author: {
-          name: post.author?.node?.name ?? "USANA News",
-          avatarUrl: post.author?.node?.avatar?.url ?? null,
-        },
-        image: image?.sourceUrl
-          ? {
-              url: image.sourceUrl,
-              alt: image.altText || post.title || "",
-              width: image.mediaDetails?.width || 1200,
-              height: image.mediaDetails?.height || 800,
-            }
-          : null,
-      };
-    });
+    return (data.posts?.nodes ?? []).map(toPostSummary);
   } catch (error) {
     console.warn("Falling back to placeholder posts:", (error as Error).message);
+    return [];
+  }
+}
+
+type PopularPicksResponse = {
+  siteSettings: {
+    siteSettingsFields: {
+      mostPopularPosts: { nodes: ({ __typename: string } & Partial<PostSummaryNode>)[] } | null;
+    } | null;
+  } | null;
+};
+
+const POPULAR_PICKS_QUERY = /* GraphQL */ `
+  query PopularPicks {
+    siteSettings {
+      siteSettingsFields {
+        mostPopularPosts {
+          nodes {
+            __typename
+            ...PostSummaryFields
+          }
+        }
+      }
+    }
+  }
+  ${POST_SUMMARY_FIELDS}
+`;
+
+const MOST_COMMENTED_QUERY = /* GraphQL */ `
+  query MostCommented($first: Int!) {
+    posts(first: $first, where: { orderby: [{ field: COMMENT_COUNT, order: DESC }, { field: DATE, order: DESC }] }) {
+      nodes {
+        ...PostSummaryFields
+      }
+    }
+  }
+  ${POST_SUMMARY_FIELDS}
+`;
+
+/**
+ * Posts picked under "Most Popular Posts" in Site Settings, in the editor's order. Tops up with
+ * the most-commented posts when fewer are picked. `excludeHref` drops the post being viewed.
+ */
+export async function getPopularPosts(count = 5, excludeHref?: string): Promise<PostSummary[]> {
+  let picks: PostSummary[] = [];
+  try {
+    const data = await wpQuery<PopularPicksResponse>(POPULAR_PICKS_QUERY, {}, {
+      tags: ["wordpress", "site-settings", "posts"],
+    });
+    const nodes = data.siteSettings?.siteSettingsFields?.mostPopularPosts?.nodes ?? [];
+    picks = nodes
+      .filter((node): node is PostSummaryNode & { __typename: string } => node.__typename === "Post")
+      .map(toPostSummary);
+  } catch (error) {
+    console.warn("No editor-picked popular posts:", (error as Error).message);
+  }
+
+  let fallback: PostSummary[] = [];
+  if (picks.filter((p) => p.href !== excludeHref).length < count) {
+    try {
+      // One extra in case the current post is among them.
+      const data = await wpQuery<PostsResponse>(MOST_COMMENTED_QUERY, { first: count + 1 }, {
+        tags: ["wordpress", "posts"],
+      });
+      fallback = (data.posts?.nodes ?? []).map(toPostSummary);
+    } catch (error) {
+      console.warn("No most-commented posts:", (error as Error).message);
+    }
+  }
+
+  const seen = new Set(excludeHref ? [excludeHref] : []);
+  return [...picks, ...fallback]
+    .filter((post) => !seen.has(post.href) && seen.add(post.href))
+    .slice(0, count);
+}
+
+export type Post = PostSummary & {
+  /** Rendered HTML from the block editor. */
+  content: string;
+  modified: string;
+  readingTime: number | null;
+  /** Plain-text featured image caption. */
+  imageCaption: string | null;
+};
+
+type PostResponse = {
+  post:
+    | (PostSummaryNode & {
+        content: string | null;
+        modified: string;
+        seo: { readingTime: number | null } | null;
+        featuredImage: { node: { caption: string | null } | null } | null;
+      })
+    | null;
+};
+
+const POST_QUERY = /* GraphQL */ `
+  query Post($uri: ID!) {
+    post(id: $uri, idType: URI) {
+      ...PostSummaryFields
+      content
+      modified
+      seo {
+        readingTime
+      }
+      featuredImage {
+        node {
+          caption
+        }
+      }
+    }
+  }
+  ${POST_SUMMARY_FIELDS}
+`;
+
+/** A published post by slug, or null if there's no such post or WordPress can't be reached. */
+export async function getPost(slug: string): Promise<Post | null> {
+  try {
+    const data = await wpQuery<PostResponse>(POST_QUERY, { uri: `/${slug}/` }, {
+      tags: ["wordpress", "posts"],
+    });
+    const post = data.post;
+    if (!post) return null;
+
+    return {
+      ...toPostSummary(post),
+      content: post.content ?? "",
+      modified: post.modified,
+      readingTime: post.seo?.readingTime || null,
+      imageCaption: post.featuredImage?.node?.caption ? stripHtml(post.featuredImage.node.caption) || null : null,
+    };
+  } catch (error) {
+    console.warn(`Could not load post "${slug}":`, (error as Error).message);
+    return null;
+  }
+}
+
+type PostSlugsResponse = { posts: { nodes: { slug: string }[] } | null };
+
+/** Slugs of the most recent posts, for prerendering at build time. */
+export async function getRecentPostSlugs(first = 50): Promise<string[]> {
+  try {
+    const data = await wpQuery<PostSlugsResponse>(
+      /* GraphQL */ `
+        query RecentPostSlugs($first: Int!) {
+          posts(first: $first) {
+            nodes {
+              slug
+            }
+          }
+        }
+      `,
+      { first },
+      { tags: ["wordpress", "posts"] },
+    );
+    return (data.posts?.nodes ?? []).map((post) => post.slug);
+  } catch (error) {
+    console.warn("No post slugs to prerender:", (error as Error).message);
     return [];
   }
 }

@@ -30,3 +30,101 @@ body {
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
 }
+
+/* WordPress post body (PostContent). Block-editor HTML can't take utility classes, so it's styled here. */
+.post-content {
+  color: #262626;
+  font-size: 1.0625rem;
+  line-height: 1.75;
+}
+.post-content > * + * {
+  margin-top: 1.25em;
+}
+.post-content h2,
+.post-content h3,
+.post-content h4 {
+  color: #171717;
+  font-weight: 700;
+  letter-spacing: -0.015em;
+  line-height: 1.25;
+  margin-top: 2em;
+}
+.post-content h2 {
+  font-size: 1.625rem;
+}
+.post-content h3 {
+  font-size: 1.3125rem;
+}
+.post-content h4 {
+  font-size: 1.125rem;
+}
+.post-content :is(h2, h3, h4) + * {
+  margin-top: 0.75em;
+}
+.post-content a {
+  color: var(--header-brand);
+  font-weight: 600;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.post-content a:hover {
+  text-decoration-thickness: 2px;
+}
+.post-content strong {
+  color: #171717;
+  font-weight: 700;
+}
+.post-content ul,
+.post-content ol {
+  padding-left: 1.5em;
+}
+.post-content ul {
+  list-style: disc;
+}
+.post-content ol {
+  list-style: decimal;
+}
+.post-content li + li {
+  margin-top: 0.5em;
+}
+.post-content li::marker {
+  color: var(--header-brand);
+}
+.post-content blockquote {
+  border-left: 4px solid var(--header-brand);
+  color: #404040;
+  font-size: 1.125rem;
+  font-style: italic;
+  padding-left: 1.25em;
+}
+.post-content img,
+.post-content video,
+.post-content iframe {
+  border-radius: 0.75rem;
+  height: auto;
+  max-width: 100%;
+}
+.post-content figcaption {
+  color: #737373;
+  font-size: 0.875rem;
+  margin-top: 0.5em;
+  text-align: center;
+}
+.post-content hr {
+  border-color: #e5e5e5;
+  margin-block: 2.5em;
+}
+.post-content table {
+  border-collapse: collapse;
+  font-size: 0.9375rem;
+  width: 100%;
+}
+.post-content :is(th, td) {
+  border: 1px solid #e5e5e5;
+  padding: 0.5em 0.75em;
+  text-align: left;
+}
+.post-content th {
+  background: #f5f5f5;
+  font-weight: 700;
+}
