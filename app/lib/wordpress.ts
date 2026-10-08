@@ -1362,3 +1362,29 @@ export async function saveContactSubmission(submission: ContactSubmission): Prom
     throw new Error(`Saving contact submission failed: ${res.status} ${detail.slice(0, 200)}`);
   }
 }
+
+/**
+ * Footer Disclaimer (WYSIWYG HTML) from Site Settings, or null if it's empty
+ * or WordPress can't be reached.
+ */
+export async function getFooterDisclaimer(): Promise<string | null> {
+  try {
+    const data = await wpQuery<{ siteSettings: { siteSettingsFields: { footerDisclaimer: string | null } | null } | null }>(
+      /* GraphQL */ `
+        query FooterDisclaimer {
+          siteSettings {
+            siteSettingsFields {
+              footerDisclaimer
+            }
+          }
+        }
+      `,
+      {},
+      { tags: ["wordpress", "site-settings"] },
+    );
+    return tidyHtml(data.siteSettings?.siteSettingsFields?.footerDisclaimer) || null;
+  } catch (error) {
+    console.warn("Falling back to default footer disclaimer:", (error as Error).message);
+    return null;
+  }
+}

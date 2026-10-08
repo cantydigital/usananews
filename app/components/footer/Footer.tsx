@@ -2,7 +2,7 @@ import Link from "next/link";
 import type { ReactNode } from "react";
 import { defaultNavLinks, SiteLogo, socialNetworks } from "@/app/components/header/Header";
 import type { NavLink, SocialLink } from "@/app/components/header/types";
-import { getMenu, getSocialLinks, type MenuItem } from "@/app/lib/wordpress";
+import { getFooterDisclaimer, getMenu, getSocialLinks, type MenuItem } from "@/app/lib/wordpress";
 import BackToTop from "./BackToTop";
 
 export type FooterColumn = {
@@ -105,6 +105,7 @@ async function SiteSocialLinks() {
 export default async function Footer({ columns, legalLinks, socialLinks, logo = <SiteLogo /> }: FooterProps) {
   const footerColumns = columns ?? toColumns(await getMenu("FOOTER_MENU")) ?? defaultFooterColumns;
   const footerLegalLinks = legalLinks ?? (await getMenu("LEGAL_MENU")) ?? defaultLegalLinks;
+  const disclaimerHtml = await getFooterDisclaimer();
 
   return (
     <footer className="mt-auto w-full bg-[var(--header-bg)] font-sans text-neutral-800">
@@ -148,21 +149,28 @@ export default async function Footer({ columns, legalLinks, socialLinks, logo = 
           ))}
         </nav>
 
-        {/* Disclaimer */}
-        <p className="pt-8 text-xs leading-relaxed text-neutral-600">
-          <strong className="font-bold uppercase text-black">A note about health content:</strong>{" "}
-          Articles on this site are for general information only and are not a substitute for
-          advice from a qualified health professional. Always talk to your doctor before starting a
-          new supplement, especially if you are pregnant, breastfeeding, taking medication or
-          managing a medical condition.{" "}
-          <Link
-            href="/editorial-standards"
-            className="text-[var(--header-brand)] underline-offset-4 hover:underline"
-          >
-            Read our editorial standards
-          </Link>
-          .
-        </p>
+        {/* Disclaimer: Site Settings → Footer Disclaimer, or the default below */}
+        {disclaimerHtml ? (
+          <div
+            className="pt-8 text-xs leading-relaxed text-neutral-600 [&_a]:text-[var(--header-brand)] [&_a]:underline-offset-4 [&_a:hover]:underline [&_b]:font-bold [&_b]:uppercase [&_b]:text-black [&_p+p]:mt-2 [&_strong]:font-bold [&_strong]:uppercase [&_strong]:text-black"
+            dangerouslySetInnerHTML={{ __html: disclaimerHtml }}
+          />
+        ) : (
+          <p className="pt-8 text-xs leading-relaxed text-neutral-600">
+            <strong className="font-bold uppercase text-black">A note about health content:</strong>{" "}
+            Articles on this site are for general information only and are not a substitute for
+            advice from a qualified health professional. Always talk to your doctor before starting a
+            new supplement, especially if you are pregnant, breastfeeding, taking medication or
+            managing a medical condition.{" "}
+            <Link
+              href="/editorial-standards"
+              className="text-[var(--header-brand)] underline-offset-4 hover:underline"
+            >
+              Read our editorial standards
+            </Link>
+            .
+          </p>
+        )}
 
         {/* Copyright and legal links */}
         <div className="mt-6 flex flex-col gap-4 text-xs text-neutral-600 md:flex-row md:items-center md:justify-between">
