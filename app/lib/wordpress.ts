@@ -1388,3 +1388,71 @@ export async function getFooterDisclaimer(): Promise<string | null> {
     return null;
   }
 }
+
+export type HomepageCta = {
+  topText: string | null;
+  title: string;
+  description: string | null;
+  button: { label: string; href: string } | null;
+};
+
+type HomepageCtaResponse = {
+  homepageSettings: {
+    homepageSettingsFields: {
+      showHomepageCtaBox: boolean | null;
+      cta: {
+        ctaTopText: string | null;
+        ctaTitleText: string | null;
+        ctaDescription: string | null;
+        ctaButtonText: string | null;
+        ctaButtonUrl: string | null;
+      } | null;
+    } | null;
+  } | null;
+};
+
+/**
+ * The homepage CTA box from Homepage Settings. Returns null when "Show Homepage CTA Box" is
+ * unticked, the title is empty, or WordPress can't be reached, so the box is simply left out.
+ */
+export async function getHomepageCta(): Promise<HomepageCta | null> {
+  try {
+    const data = await wpQuery<HomepageCtaResponse>(
+      /* GraphQL */ `
+        query HomepageCta {
+          homepageSettings {
+            homepageSettingsFields {
+              showHomepageCtaBox
+              cta {
+                ctaTopText
+                ctaTitleText
+                ctaDescription
+                ctaButtonText
+                ctaButtonUrl
+              }
+            }
+          }
+        }
+      `,
+      {},
+      { tags: ["wordpress", "homepage-settings"] },
+    );
+    const fields = data.homepageSettings?.homepageSettingsFields;
+    const cta = fields?.cta;
+    const title = clean(cta?.ctaTitleText);
+    if (!fields?.showHomepageCtaBox || !title) return null;
+
+    const label = clean(cta?.ctaButtonText);
+    const url = cta?.ctaButtonUrl?.trim();
+    return {
+      topText: clean(cta?.ctaTopText),
+      title,
+      description: cta?.ctaDescription ? stripHtml(cta.ctaDescription) || null : null,
+      // Links to this site become paths, so they open in the same tab.
+      button: label && url ? { label, href: toSiteHref(url) } : null,
+    };
+  } catch (error) {
+    console.warn("Hiding homepage CTA box:", (error as Error).message);
+    return null;
+  }
+}

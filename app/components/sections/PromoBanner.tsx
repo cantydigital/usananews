@@ -8,14 +8,15 @@ type Props = {
   eyebrow?: string;
   /** Emphasised figure in the middle, e.g. { label: "Price starts at", value: "$49" }. */
   highlight?: { label: string; value: string };
-  cta: { label: string; href: string };
+  /** Button; left out when not set. */
+  cta?: { label: string; href: string } | null;
   /** Product or campaign image on the left; diagonal brand stripes are shown when omitted. */
   image?: { src: string; alt: string; width: number; height: number };
 };
 
 /** Full-width promotional strip for campaigns, products or the newsletter. */
 export default function PromoBanner({ title, subtitle, eyebrow, highlight, cta, image }: Props) {
-  const external = /^https?:\/\//i.test(cta.href);
+  const external = cta ? /^https?:\/\//i.test(cta.href) : false;
 
   return (
     <section aria-label={title} className="w-full font-sans">
@@ -58,13 +59,15 @@ export default function PromoBanner({ title, subtitle, eyebrow, highlight, cta, 
               </div>
             )}
 
-            <Link
-              href={cta.href}
-              {...(external && { target: "_blank", rel: "noopener noreferrer" })}
-              className="inline-flex h-12 shrink-0 items-center justify-center self-start rounded-md bg-white px-8 text-sm font-bold uppercase tracking-wider text-[var(--header-brand)] shadow-sm transition hover:bg-white/90 md:self-auto"
-            >
-              {cta.label}
-            </Link>
+            {cta && (
+              <Link
+                href={cta.href}
+                {...(external && { target: "_blank", rel: "noopener noreferrer" })}
+                className="inline-flex h-12 shrink-0 items-center justify-center self-start rounded-md bg-white px-8 text-sm font-bold uppercase tracking-wider text-[var(--header-brand)] shadow-sm transition hover:bg-white/90 md:self-auto"
+              >
+                {cta.label}
+              </Link>
+            )}
           </div>
         </div>
       </div>
