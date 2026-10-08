@@ -14,7 +14,7 @@ export const defaultFooterColumns: FooterColumn[] = [
   {
     heading: "About Us",
     links: [
-      { label: "About USANA News", href: "/about" },
+      { label: "About USANA News", href: "/about-us" },
       { label: "Our writers", href: "/writers" },
       { label: "Editorial standards", href: "/editorial-standards" },
       { label: "Advertise with us", href: "/advertise" },

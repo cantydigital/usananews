@@ -1,5 +1,4 @@
 import Image from "next/image";
-import { notFound } from "next/navigation";
 import {
   AuthorAvatar,
   CategoryBadge,
@@ -8,19 +7,8 @@ import {
   ShareButtons,
 } from "@/app/components/posts";
 import { Sidebar } from "@/app/components/sidebar";
-import { seoMetadata } from "@/app/lib/seo";
 import { SITE_URL } from "@/app/lib/site";
-import { getPost, getRecentPostSlugs, type Post } from "@/app/lib/wordpress";
-
-// Prerender recent posts at build time; older or new posts render on first visit, then stay cached.
-export async function generateStaticParams() {
-  return (await getRecentPostSlugs()).map((slug) => ({ slug }));
-}
-
-export async function generateMetadata({ params }: PageProps<"/[slug]">) {
-  const { slug } = await params;
-  return seoMetadata(`/${slug}/`);
-}
+import type { Post } from "@/app/lib/wordpress";
 
 /** Collapses text for comparison, ignoring tags, punctuation and spacing. */
 function normalise(text: string) {
@@ -33,11 +21,8 @@ function hasCustomExcerpt(post: Post) {
   return excerpt.length > 0 && !normalise(post.content).startsWith(excerpt.slice(0, 80));
 }
 
-export default async function PostPage({ params }: PageProps<"/[slug]">) {
-  const { slug } = await params;
-  const post = await getPost(slug);
-  if (!post) notFound();
-
+/** Single post layout: header, featured image, body, and the sidebar. */
+export default function PostArticle({ post }: { post: Post }) {
   return (
     <main className="flex-1 bg-[var(--header-bg)] font-sans">
       <div className="mx-auto grid max-w-7xl gap-12 px-4 py-8 sm:px-6 lg:grid-cols-[minmax(0,1fr)_320px] lg:px-8 lg:py-12 xl:grid-cols-[minmax(0,1fr)_340px]">

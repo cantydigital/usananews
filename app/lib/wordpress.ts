@@ -470,78 +470,325 @@ export type Post = PostSummary & {
   imageCaption: string | null;
 };
 
-type PostResponse = {
-  post:
-    | (PostSummaryNode & {
+export type Page = {
+  title: string;
+  href: string;
+  /** Rendered HTML from the block editor. */
+  content: string;
+  modified: string;
+  image: PostSummary["image"];
+  imageCaption: string | null;
+  /** Rows of the ACF "Page Content" flexible content field, in the editor's order. */
+  sections: PageSection[];
+};
+
+export type SectionImage = { url: string; alt: string; width: number; height: number };
+
+/** One flexible content layout, mapped to plain data so the components don't depend on WordPress. */
+export type PageSection =
+  | { type: "hero"; title: string | null; description: string | null; image: SectionImage | null }
+  | { type: "imageWithText"; html: string; image: SectionImage | null; imagePosition: "left" | "right" }
+  | { type: "faq"; title: string | null; descriptionHtml: string; items: FaqItem[] };
+
+export type FaqItem = {
+  question: string;
+  /** Answer as HTML from the WYSIWYG field. */
+  answerHtml: string;
+  /** Answer as plain text, for FAQ structured data. */
+  answerText: string;
+};
+
+/** What lives at a site path: a post or a page. */
+export type Content = { type: "post"; post: Post } | { type: "page"; page: Page };
+
+type ImageNode = {
+  sourceUrl: string;
+  altText: string | null;
+  caption: string | null;
+  mediaDetails: { width: number | null; height: number | null } | null;
+};
+
+type ContentResponse = {
+  nodeByUri:
+    | ({ __typename: "Post" } & PostSummaryNode & {
+          content: string | null;
+          modified: string;
+          seo: { readingTime: number | null } | null;
+          featuredImage: { node: ImageNode | null } | null;
+        })
+    | {
+        __typename: "Page";
+        title: string | null;
+        uri: string | null;
         content: string | null;
         modified: string;
-        seo: { readingTime: number | null } | null;
-        featuredImage: { node: { caption: string | null } | null } | null;
-      })
+        featuredImage: { node: ImageNode | null } | null;
+        pageContent: { pageContent: PageSectionNode[] | null } | null;
+      }
+    | { __typename: string }
     | null;
 };
 
-const POST_QUERY = /* GraphQL */ `
-  query Post($uri: ID!) {
-    post(id: $uri, idType: URI) {
-      ...PostSummaryFields
-      content
-      modified
-      seo {
-        readingTime
-      }
-      featuredImage {
-        node {
-          caption
+type MediaEdge = { node: Omit<ImageNode, "caption"> | null } | null;
+
+type PageSectionNode =
+  | {
+      __typename: "PageContentPageContentHeroLayout";
+      title: string | null;
+      shortDescription: string | null;
+      backgroundImage: MediaEdge;
+    }
+  | {
+      __typename: "PageContentPageContentImageWithTextLayout";
+      text: string | null;
+      imagePosition: string[] | string | null;
+      image: MediaEdge;
+    }
+  | {
+      __typename: "PageContentPageContentFrequentlyAskedQuestionsLayout";
+      title: string | null;
+      shortDescription: string | null;
+      faqs: { question: string | null; answer: string | null }[] | null;
+    };
+
+const CONTENT_QUERY = /* GraphQL */ `
+  query ContentByUri($uri: String!) {
+    nodeByUri(uri: $uri) {
+      __typename
+      ... on Post {
+        ...PostSummaryFields
+        content
+        modified
+        seo {
+          readingTime
+        }
+        featuredImage {
+          node {
+            caption
+          }
         }
       }
+      ... on Page {
+        title
+        uri
+        content
+        modified
+        featuredImage {
+          node {
+            sourceUrl
+            altText
+            caption
+            mediaDetails {
+              width
+              height
+            }
+          }
+        }
+        pageContent {
+          pageContent {
+            __typename
+            ... on PageContentPageContentHeroLayout {
+              title
+              shortDescription
+              backgroundImage {
+                node {
+                  ...SectionImageFields
+                }
+              }
+            }
+            ... on PageContentPageContentImageWithTextLayout {
+              text
+              imagePosition
+              image {
+                node {
+                  ...SectionImageFields
+                }
+              }
+            }
+            ... on PageContentPageContentFrequentlyAskedQuestionsLayout {
+              title
+              shortDescription
+              faqs {
+                question
+                answer
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+
+  fragment SectionImageFields on MediaItem {
+    sourceUrl
+    altText
+    mediaDetails {
+      width
+      height
     }
   }
   ${POST_SUMMARY_FIELDS}
 `;
 
-/**
- * A published post by slug, or null when WordPress says there is no such post.
- * Throws if WordPress can't be reached, so an outage is never mistaken for a missing post:
- * a build fails instead of prerendering a 404, and a background refresh keeps the last good page.
- */
-export async function getPost(slug: string): Promise<Post | null> {
-  const data = await wpQuery<PostResponse>(POST_QUERY, { uri: `/${slug}/` }, {
-    tags: ["wordpress", "posts"],
-  });
-  const post = data.post;
-  if (!post) return null;
-
+function toSectionImage(edge: MediaEdge, fallbackAlt: string): SectionImage | null {
+  const image = edge?.node;
+  if (!image?.sourceUrl) return null;
   return {
-    ...toPostSummary(post),
-    content: post.content ?? "",
-    modified: post.modified,
-    readingTime: post.seo?.readingTime || null,
-    imageCaption: post.featuredImage?.node?.caption ? stripHtml(post.featuredImage.node.caption) || null : null,
+    url: image.sourceUrl,
+    alt: image.altText || fallbackAlt,
+    width: image.mediaDetails?.width || 1600,
+    height: image.mediaDetails?.height || 900,
   };
 }
 
-type PostSlugsResponse = { posts: { nodes: { slug: string }[] } | null };
+/** Removes empty elements the WYSIWYG editor leaves behind, e.g. "<h3></h3>" or a trailing "<p>". */
+function tidyHtml(html: string | null | undefined) {
+  return (html ?? "")
+    .replace(/<(p|h[1-6]|div|span)\b[^>]*>(?:\s|&nbsp;|<br\s*\/?>)*<\/\1>/gi, "")
+    .replace(/<p\b[^>]*>\s*$/i, "")
+    .trim();
+}
 
-/** Slugs of the most recent posts, for prerendering at build time. */
-export async function getRecentPostSlugs(first = 50): Promise<string[]> {
+/**
+ * Maps flexible content rows to sections, keeping the editor's order. To support a new ACF layout,
+ * add it to CONTENT_QUERY, PageSectionNode, PageSection and here, then give it a component in
+ * app/components/page-sections. Layouts without a mapping are skipped.
+ */
+function toPageSections(rows: PageSectionNode[] | null | undefined): PageSection[] {
+  // Rows of layouts this code doesn't know arrive as { __typename } only, so match on the type name.
+  return (rows ?? []).flatMap((row): PageSection[] => {
+    switch (row.__typename) {
+      case "PageContentPageContentHeroLayout": {
+        const title = clean(row.title);
+        return [
+          {
+            type: "hero",
+            title,
+            description: clean(row.shortDescription),
+            image: toSectionImage(row.backgroundImage, title ?? ""),
+          },
+        ];
+      }
+      case "PageContentPageContentImageWithTextLayout": {
+        // ACF selects arrive as a list of the chosen labels, e.g. ["Left"].
+        const position = [row.imagePosition].flat()[0]?.toLowerCase();
+        return [
+          {
+            type: "imageWithText",
+            html: tidyHtml(row.text),
+            image: toSectionImage(row.image, ""),
+            imagePosition: position === "right" ? "right" : "left",
+          },
+        ];
+      }
+      case "PageContentPageContentFrequentlyAskedQuestionsLayout":
+        return [
+          {
+            type: "faq",
+            title: clean(row.title),
+            descriptionHtml: tidyHtml(row.shortDescription),
+            items: (row.faqs ?? []).flatMap((faq) => {
+              const question = clean(faq.question);
+              const answerHtml = tidyHtml(faq.answer);
+              return question ? [{ question, answerHtml, answerText: stripHtml(answerHtml) }] : [];
+            }),
+          },
+        ];
+      default:
+        return [];
+    }
+  });
+}
+
+function captionText(image: { caption: string | null } | null | undefined) {
+  return image?.caption ? stripHtml(image.caption) || null : null;
+}
+
+/**
+ * The post or page at a site path such as "/about-us/", or null when WordPress has nothing there.
+ * Throws if WordPress can't be reached, so an outage is never mistaken for a missing page:
+ * a build fails instead of prerendering a 404, and a background refresh keeps the last good page.
+ */
+export async function getContent(uri: string): Promise<Content | null> {
+  const data = await wpQuery<ContentResponse>(CONTENT_QUERY, { uri }, {
+    tags: ["wordpress", "posts", "pages"],
+  });
+  const node = data.nodeByUri;
+
+  if (node && node.__typename === "Post" && "content" in node && "excerpt" in node) {
+    return {
+      type: "post",
+      post: {
+        ...toPostSummary(node),
+        content: node.content ?? "",
+        modified: node.modified,
+        readingTime: node.seo?.readingTime || null,
+        imageCaption: captionText(node.featuredImage?.node),
+      },
+    };
+  }
+
+  if (node && node.__typename === "Page" && "content" in node) {
+    const image = node.featuredImage?.node;
+    const title = clean(node.title) ?? "Untitled";
+    return {
+      type: "page",
+      page: {
+        title,
+        href: node.uri?.replace(/\/+$/, "") || "/",
+        content: node.content ?? "",
+        modified: node.modified,
+        image: image?.sourceUrl
+          ? {
+              url: image.sourceUrl,
+              alt: image.altText || title,
+              width: image.mediaDetails?.width || 1600,
+              height: image.mediaDetails?.height || 900,
+            }
+          : null,
+        imageCaption: captionText(image),
+        sections: toPageSections("pageContent" in node ? node.pageContent?.pageContent : null),
+      },
+    };
+  }
+
+  // Categories, tags and other archives don't have routes yet.
+  return null;
+}
+
+type PrerenderPathsResponse = {
+  posts: { nodes: { uri: string | null }[] } | null;
+  pages: { nodes: { uri: string | null; isFrontPage: boolean }[] } | null;
+};
+
+/** URL segments of recent posts and all pages, for prerendering at build time. */
+export async function getPrerenderPaths(): Promise<string[][]> {
   try {
-    const data = await wpQuery<PostSlugsResponse>(
+    const data = await wpQuery<PrerenderPathsResponse>(
       /* GraphQL */ `
-        query RecentPostSlugs($first: Int!) {
-          posts(first: $first) {
+        query PrerenderPaths {
+          posts(first: 50) {
             nodes {
-              slug
+              uri
+            }
+          }
+          pages(first: 100) {
+            nodes {
+              uri
+              isFrontPage
             }
           }
         }
       `,
-      { first },
-      { tags: ["wordpress", "posts"] },
+      {},
+      { tags: ["wordpress", "posts", "pages"] },
     );
-    return (data.posts?.nodes ?? []).map((post) => post.slug);
+    const pages = (data.pages?.nodes ?? []).filter((page) => !page.isFrontPage);
+    return [...(data.posts?.nodes ?? []), ...pages]
+      .map((node) => (node.uri ?? "").split("/").filter(Boolean))
+      .filter((segments) => segments.length > 0);
   } catch (error) {
-    console.warn("No post slugs to prerender:", (error as Error).message);
+    console.warn("No paths to prerender:", (error as Error).message);
     return [];
   }
 }
