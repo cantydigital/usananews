@@ -2,7 +2,7 @@ import Link from "next/link";
 import type { ReactNode } from "react";
 import { defaultNavLinks, SiteLogo, socialNetworks } from "@/app/components/header/Header";
 import type { NavLink, SocialLink } from "@/app/components/header/types";
-import { getSocialLinks } from "@/app/lib/wordpress";
+import { getMenu, getSocialLinks, type MenuItem } from "@/app/lib/wordpress";
 import BackToTop from "./BackToTop";
 
 export type FooterColumn = {
@@ -10,6 +10,7 @@ export type FooterColumn = {
   links: NavLink[];
 };
 
+/** Shown until a menu is assigned to the "Footer Menu" location in WordPress. */
 export const defaultFooterColumns: FooterColumn[] = [
   {
     heading: "About Us",
@@ -38,6 +39,7 @@ export const defaultFooterColumns: FooterColumn[] = [
   },
 ];
 
+/** Shown until a menu is assigned to the "Footer Legal Menu" location in WordPress. */
 export const defaultLegalLinks: NavLink[] = [
   { label: "Privacy policy", href: "/privacy-policy" },
   { label: "Cookie policy", href: "/cookie-policy" },
@@ -45,7 +47,9 @@ export const defaultLegalLinks: NavLink[] = [
 ];
 
 type FooterProps = {
+  /** Defaults to the WordPress "Footer Menu", then defaultFooterColumns. */
   columns?: FooterColumn[];
+  /** Defaults to the WordPress "Footer Legal Menu", then defaultLegalLinks. */
   legalLinks?: NavLink[];
   /** Defaults to the links set in WordPress Site Settings. */
   socialLinks?: SocialLink[];
@@ -54,6 +58,26 @@ type FooterProps = {
 };
 
 const linkClass = "text-neutral-600 underline-offset-4 transition-colors hover:text-black hover:underline";
+
+function FooterLink({ link }: { link: NavLink }) {
+  return (
+    <Link
+      href={link.href}
+      {...(link.newTab && { target: "_blank", rel: "noopener noreferrer" })}
+      className={linkClass}
+    >
+      {link.label}
+    </Link>
+  );
+}
+
+/** Footer Menu: each top-level item is a column heading and its sub-items are the column's links. */
+function toColumns(menu: MenuItem[] | null): FooterColumn[] | null {
+  const columns = (menu ?? [])
+    .filter((item) => item.children.length > 0)
+    .map((item) => ({ heading: item.label, links: item.children }));
+  return columns.length ? columns : null;
+}
 
 function SocialLinkItems({ links }: { links: SocialLink[] }) {
   return links.map(({ network, href }) => {
@@ -78,12 +102,10 @@ async function SiteSocialLinks() {
   return <SocialLinkItems links={await getSocialLinks()} />;
 }
 
-export default function Footer({
-  columns = defaultFooterColumns,
-  legalLinks = defaultLegalLinks,
-  socialLinks,
-  logo = <SiteLogo />,
-}: FooterProps) {
+export default async function Footer({ columns, legalLinks, socialLinks, logo = <SiteLogo /> }: FooterProps) {
+  const footerColumns = columns ?? toColumns(await getMenu("FOOTER_MENU")) ?? defaultFooterColumns;
+  const footerLegalLinks = legalLinks ?? (await getMenu("LEGAL_MENU")) ?? defaultLegalLinks;
+
   return (
     <footer className="mt-auto w-full bg-[var(--header-bg)] font-sans text-neutral-800">
       <div className="mx-auto max-w-7xl px-4 pb-8 sm:px-6 lg:px-8">
@@ -118,17 +140,15 @@ export default function Footer({
           aria-label="Footer"
           className="grid grid-cols-2 gap-x-6 gap-y-10 border-b border-neutral-200 py-10 lg:grid-cols-4"
         >
-          {columns.map((column) => (
-            <div key={column.heading}>
+          {footerColumns.map((column, c) => (
+            <div key={`${column.heading}-${c}`}>
               <h2 className="mb-4 text-sm font-bold uppercase tracking-wider text-black">
                 {column.heading}
               </h2>
               <ul className="space-y-3 text-sm">
-                {column.links.map((link) => (
-                  <li key={link.href}>
-                    <Link href={link.href} className={linkClass}>
-                      {link.label}
-                    </Link>
+                {column.links.map((link, i) => (
+                  <li key={`${link.href}-${i}`}>
+                    <FooterLink link={link} />
                   </li>
                 ))}
               </ul>
@@ -156,11 +176,9 @@ export default function Footer({
         <div className="mt-6 flex flex-col gap-4 text-xs text-neutral-600 md:flex-row md:items-center md:justify-between">
           <p>© {new Date().getFullYear()} USANA News. All rights reserved.</p>
           <ul className="flex flex-wrap items-center gap-y-2 divide-x divide-neutral-300">
-            {legalLinks.map((link) => (
-              <li key={link.href} className="px-4 first:pl-0 last:pr-0">
-                <Link href={link.href} className={linkClass}>
-                  {link.label}
-                </Link>
+            {footerLegalLinks.map((link, i) => (
+              <li key={`${link.href}-${i}`} className="px-4 first:pl-0 last:pr-0">
+                <FooterLink link={link} />
               </li>
             ))}
           </ul>

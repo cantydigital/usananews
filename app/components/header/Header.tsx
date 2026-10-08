@@ -1,6 +1,6 @@
 import Image from "next/image";
 import Link from "next/link";
-import { getAnnouncements, getSiteLogo, getSocialLinks } from "@/app/lib/wordpress";
+import { getAnnouncements, getMenu, getSiteLogo, getSocialLinks } from "@/app/lib/wordpress";
 import type { ComponentType, ReactNode, SVGProps } from "react";
 import AnnouncementBar from "./AnnouncementBar";
 import Logo from "./Logo";
@@ -27,6 +27,7 @@ export const socialNetworks: Record<
   x: { label: "X", Icon: XIcon },
 };
 
+/** Shown until a menu is assigned to the "Header Menu" location in WordPress. */
 export const defaultNavLinks: NavLink[] = [
   { label: "Gut Supps", href: "/gut-supps" },
   { label: "Joint Supps", href: "/joint-supps" },
@@ -43,6 +44,7 @@ export const defaultAnnouncements = [
 ];
 
 type HeaderProps = {
+  /** Defaults to the WordPress "Header Menu", then defaultNavLinks. */
   navLinks?: NavLink[];
   /** Defaults to the links set in WordPress Site Settings. */
   socialLinks?: SocialLink[];
@@ -101,12 +103,18 @@ async function SiteAnnouncements() {
   return <AnnouncementBar messages={announcements ?? defaultAnnouncements} />;
 }
 
-export default function Header({
-  navLinks = defaultNavLinks,
+export default async function Header({
+  navLinks,
   socialLinks,
   announcements,
   logo = <SiteLogo />,
 }: HeaderProps) {
+  // Top-level items of the WordPress "Header Menu"; sub-items aren't shown yet.
+  const links =
+    navLinks ??
+    (await getMenu("HEADER_MENU"))?.map(({ label, href, newTab }) => ({ label, href, newTab })) ??
+    defaultNavLinks;
+
   return (
     <header className="relative z-30 w-full font-sans">
       {/* Top announcement bar */}
@@ -131,14 +139,14 @@ export default function Header({
       {/* Main navigation */}
       <div className="relative border-b border-neutral-200 bg-[var(--header-bg)]">
         <div className="mx-auto flex h-[72px] max-w-7xl items-center gap-6 px-4 sm:px-6 lg:px-8">
-          <MobileMenu links={navLinks} />
+          <MobileMenu links={links} />
 
           <Link href="/" className="shrink-0" aria-label="Home">
             {logo}
           </Link>
 
           <nav aria-label="Main" className="hidden lg:block">
-            <NavLinks links={navLinks} className="flex items-center gap-7" />
+            <NavLinks links={links} className="flex items-center gap-7" />
           </nav>
 
           <div className="ml-auto flex items-center">

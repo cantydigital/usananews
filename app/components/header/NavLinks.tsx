@@ -29,6 +29,7 @@ export default function NavLinks({
             <Link
               href={link.href}
               onClick={onNavigate}
+              {...(link.newTab && { target: "_blank", rel: "noopener noreferrer" })}
               aria-current={active ? "page" : undefined}
               className={`text-sm font-semibold uppercase tracking-wider underline-offset-4 transition-colors hover:underline ${
                 active ? "text-black underline" : "text-neutral-600 hover:text-black"

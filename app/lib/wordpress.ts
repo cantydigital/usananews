@@ -1,7 +1,8 @@
 // Server-only: reads credentials from env vars that are never exposed to the browser.
 
 import { unstable_cache } from "next/cache";
-import type { SocialLink, SocialNetwork } from "@/app/components/header/types";
+import type { NavLink, SocialLink, SocialNetwork } from "@/app/components/header/types";
+import { SITE_URL } from "./site";
 
 type QueryOptions = {
   /** Seconds before the cached response is refreshed. */
@@ -1024,6 +1025,90 @@ export async function getFeaturedCategories(): Promise<FeaturedCategory[] | null
     return categories.length ? categories : null;
   } catch (error) {
     console.warn("Falling back to default featured categories:", (error as Error).message);
+    return null;
+  }
+}
+
+/** Menu locations registered in WordPress with register_nav_menus(). */
+export type MenuLocation = "HEADER_MENU" | "FOOTER_MENU" | "LEGAL_MENU";
+
+export type MenuItem = NavLink & { children: MenuItem[] };
+
+type MenuItemsResponse = {
+  menuItems: {
+    nodes: {
+      id: string;
+      parentId: string | null;
+      label: string | null;
+      url: string | null;
+      target: string | null;
+    }[];
+  } | null;
+};
+
+const MENU_ITEMS_QUERY = /* GraphQL */ `
+  query MenuItems($location: MenuLocationEnum!) {
+    menuItems(where: { location: $location }, first: 200) {
+      nodes {
+        id
+        parentId
+        label
+        url
+        target
+      }
+    }
+  }
+`;
+
+/**
+ * Turns a menu item URL into a site link: WordPress and front-end URLs become paths
+ * ("https://wpbacked…/about-us/" → "/about-us"), external URLs and "#" stay as they are.
+ */
+function toSiteHref(url: string | null) {
+  if (!url || url.startsWith("#")) return url || "#";
+  try {
+    const target = new URL(url, SITE_URL);
+    const internal = [SITE_URL, process.env.WORDPRESS_GRAPHQL_URL ?? ""].some(
+      (base) => base && new URL(base).hostname.replace(/^www\./, "") === target.hostname.replace(/^www\./, ""),
+    );
+    if (!internal) return url;
+    return (target.pathname.replace(/\/+$/, "") || "/") + target.search + target.hash;
+  } catch {
+    return url;
+  }
+}
+
+/**
+ * Items of the menu assigned to a location in Appearance → Menus, nested by parent.
+ * Returns null if no menu is assigned, the location isn't registered, or WordPress can't be reached.
+ */
+export async function getMenu(location: MenuLocation): Promise<MenuItem[] | null> {
+  try {
+    const data = await wpQuery<MenuItemsResponse>(MENU_ITEMS_QUERY, { location }, {
+      tags: ["wordpress", "menus"],
+    });
+    const nodes = data.menuItems?.nodes ?? [];
+    if (nodes.length === 0) return null;
+
+    // WordPress returns items flat and in menu order; rebuild the tree from parentId.
+    const items = new Map<string, MenuItem>();
+    for (const node of nodes) {
+      items.set(node.id, {
+        label: clean(node.label) ?? "",
+        href: toSiteHref(node.url),
+        newTab: node.target === "_blank",
+        children: [],
+      });
+    }
+    const roots: MenuItem[] = [];
+    for (const node of nodes) {
+      const item = items.get(node.id)!;
+      const parent = node.parentId ? items.get(node.parentId) : undefined;
+      (parent ? parent.children : roots).push(item);
+    }
+    return roots;
+  } catch (error) {
+    console.warn(`No ${location} menu:`, (error as Error).message);
     return null;
   }
 }
