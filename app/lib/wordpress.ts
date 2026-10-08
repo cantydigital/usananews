@@ -489,7 +489,14 @@ export type SectionImage = { url: string; alt: string; width: number; height: nu
 export type PageSection =
   | { type: "hero"; title: string | null; description: string | null; image: SectionImage | null }
   | { type: "imageWithText"; html: string; image: SectionImage | null; imagePosition: "left" | "right" }
-  | { type: "faq"; title: string | null; descriptionHtml: string; items: FaqItem[] };
+  | { type: "faq"; title: string | null; descriptionHtml: string; items: FaqItem[] }
+  | {
+      type: "contactForm";
+      title: string | null;
+      description: string | null;
+      /** Server-only: where enquiries are emailed. Never pass these to client components. */
+      email: { to: string[]; from: string | null; subject: string | null };
+    };
 
 export type FaqItem = {
   question: string;
@@ -550,6 +557,14 @@ type PageSectionNode =
       title: string | null;
       shortDescription: string | null;
       faqs: { question: string | null; answer: string | null }[] | null;
+    }
+  | {
+      __typename: "PageContentPageContentContactFormLayout";
+      sectionTitle: string | null;
+      sectionShortDescription: string | null;
+      emailTo: string | null;
+      emailFrom: string | null;
+      emailSubject: string | null;
     };
 
 const CONTENT_QUERY = /* GraphQL */ `
@@ -613,6 +628,13 @@ const CONTENT_QUERY = /* GraphQL */ `
                 question
                 answer
               }
+            }
+            ... on PageContentPageContentContactFormLayout {
+              sectionTitle
+              sectionShortDescription
+              emailTo
+              emailFrom
+              emailSubject
             }
           }
         }
@@ -693,6 +715,20 @@ function toPageSections(rows: PageSectionNode[] | null | undefined): PageSection
               const answerHtml = tidyHtml(faq.answer);
               return question ? [{ question, answerHtml, answerText: stripHtml(answerHtml) }] : [];
             }),
+          },
+        ];
+      case "PageContentPageContentContactFormLayout":
+        return [
+          {
+            type: "contactForm",
+            title: clean(row.sectionTitle),
+            description: row.sectionShortDescription ? stripHtml(row.sectionShortDescription) || null : null,
+            email: {
+              // "Email To" may list several addresses separated by commas.
+              to: (row.emailTo ?? "").split(/[,;\s]+/).map((address) => address.trim()).filter(Boolean),
+              from: clean(row.emailFrom),
+              subject: clean(row.emailSubject),
+            },
           },
         ];
       default:
@@ -1249,5 +1285,61 @@ export async function getMenu(location: MenuLocation): Promise<MenuItem[] | null
   } catch (error) {
     console.warn(`No ${location} menu:`, (error as Error).message);
     return null;
+  }
+}
+
+export type ContactSubmission = {
+  name: string;
+  email: string;
+  phone: string;
+  subject: string;
+  message: string;
+};
+
+function escapeHtml(text: string) {
+  return text.replace(/[&<>"']/g, (char) => `&#${char.charCodeAt(0)};`);
+}
+
+/**
+ * Saves a contact form enquiry as a private "Contact Submission" post via the WordPress REST API.
+ * Uses WORDPRESS_FORMS_USERNAME / WORDPRESS_FORMS_APP_PASSWORD when set (a low-privilege user is
+ * recommended), otherwise the main WordPress credentials. Throws if the save fails.
+ */
+export async function saveContactSubmission(submission: ContactSubmission): Promise<void> {
+  const endpoint = process.env.WORDPRESS_GRAPHQL_URL;
+  const username = process.env.WORDPRESS_FORMS_USERNAME ?? process.env.WORDPRESS_USERNAME;
+  const password = process.env.WORDPRESS_FORMS_APP_PASSWORD ?? process.env.WORDPRESS_APP_PASSWORD;
+  if (!endpoint || !username || !password) throw new Error("WordPress env vars are not configured");
+
+  // Store the message as escaped text so a visitor can never inject HTML into WP Admin.
+  const content = submission.message
+    .split(/\n{2,}/)
+    .map((paragraph) => `<p>${escapeHtml(paragraph).replace(/\n/g, "<br>")}</p>`)
+    .join("\n");
+
+  const res = await fetch(`${new URL(endpoint).origin}/wp-json/wp/v2/contact-submissions`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Basic ${Buffer.from(`${username}:${password}`).toString("base64")}`,
+    },
+    body: JSON.stringify({
+      title: `${submission.name} – ${submission.subject}`,
+      content,
+      status: "private",
+      meta: {
+        name: submission.name,
+        email: submission.email,
+        phone: submission.phone,
+        subject: submission.subject,
+      },
+    }),
+    cache: "no-store",
+    signal: AbortSignal.timeout(15_000),
+  });
+
+  if (!res.ok) {
+    const detail = await res.text().catch(() => "");
+    throw new Error(`Saving contact submission failed: ${res.status} ${detail.slice(0, 200)}`);
   }
 }

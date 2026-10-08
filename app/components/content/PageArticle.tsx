@@ -51,7 +51,12 @@ export default function PageArticle({ page }: { page: Page }) {
           </figure>
         )}
 
-        <PageSections sections={page.sections} startsPage={opensWithHero} breadcrumb={breadcrumbFor(page)} />
+        <PageSections
+          sections={page.sections}
+          startsPage={opensWithHero}
+          breadcrumb={breadcrumbFor(page)}
+          pagePath={page.href}
+        />
 
         {page.content.trim() && (
           <PostContent html={page.content} className="mx-auto w-full max-w-3xl px-4 sm:px-6 lg:px-0" />
