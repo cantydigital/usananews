@@ -794,6 +794,145 @@ export async function getPrerenderPaths(): Promise<string[][]> {
   }
 }
 
+export type Category = {
+  name: string;
+  slug: string;
+  href: string;
+  description: string | null;
+  /** Number of published posts. */
+  count: number;
+  /** ACF "Category Image", shown in the category page's hero. */
+  image: SectionImage | null;
+};
+
+type CategoryResponse = {
+  category: {
+    name: string | null;
+    slug: string;
+    uri: string | null;
+    description: string | null;
+    count: number | null;
+    categoryField: { categoryImage: MediaEdge } | null;
+  } | null;
+};
+
+const CATEGORY_QUERY = /* GraphQL */ `
+  query Category($slug: ID!) {
+    category(id: $slug, idType: SLUG) {
+      name
+      slug
+      uri
+      description
+      count
+      categoryField {
+        categoryImage {
+          node {
+            sourceUrl
+            altText
+            mediaDetails {
+              width
+              height
+            }
+          }
+        }
+      }
+    }
+  }
+`;
+
+/**
+ * A category by slug, or null when WordPress has no such category.
+ * Throws if WordPress can't be reached, so an outage is never shown as a 404.
+ */
+export async function getCategory(slug: string): Promise<Category | null> {
+  const data = await wpQuery<CategoryResponse>(CATEGORY_QUERY, { slug }, {
+    tags: ["wordpress", "categories"],
+  });
+  const category = data.category;
+  if (!category) return null;
+  return {
+    name: clean(category.name) ?? category.slug,
+    slug: category.slug,
+    href: category.uri?.replace(/\/+$/, "") || `/category/${category.slug}`,
+    description: category.description ? stripHtml(category.description) || null : null,
+    count: category.count ?? 0,
+    image: toSectionImage(category.categoryField?.categoryImage ?? null, clean(category.name) ?? ""),
+  };
+}
+
+const CATEGORY_CURSOR_QUERY = /* GraphQL */ `
+  query CategoryCursor($category: String!, $first: Int!, $after: String) {
+    posts(first: $first, after: $after, where: { categoryName: $category }) {
+      pageInfo {
+        endCursor
+        hasNextPage
+      }
+    }
+  }
+`;
+
+const CATEGORY_POSTS_QUERY = /* GraphQL */ `
+  query CategoryPosts($category: String!, $first: Int!, $after: String) {
+    posts(first: $first, after: $after, where: { categoryName: $category }) {
+      nodes {
+        ...PostSummaryFields
+      }
+    }
+  }
+  ${POST_SUMMARY_FIELDS}
+`;
+
+type CursorResponse = { posts: { pageInfo: { endCursor: string | null; hasNextPage: boolean } } | null };
+
+// WPGraphQL returns at most 100 items per request.
+const MAX_PAGE_SIZE = 100;
+
+/**
+ * One page of a category's posts, newest first (page numbers start at 1).
+ * WPGraphQL only pages by cursor, so earlier pages are skipped by walking cursors in cached steps.
+ * Throws if WordPress can't be reached.
+ */
+export async function getCategoryPosts(category: string, page: number, perPage: number): Promise<PostSummary[]> {
+  const tags = ["wordpress", "posts", "categories"];
+  let after: string | null = null;
+
+  for (let skip = (page - 1) * perPage; skip > 0; ) {
+    const first = Math.min(skip, MAX_PAGE_SIZE);
+    const data: CursorResponse = await wpQuery<CursorResponse>(CATEGORY_CURSOR_QUERY, { category, first, after }, { tags });
+    const info = data.posts?.pageInfo;
+    // Nothing after the skipped posts means the page is past the end.
+    if (!info?.endCursor || !info.hasNextPage) return [];
+    after = info.endCursor;
+    skip -= first;
+  }
+
+  const data = await wpQuery<PostsResponse>(CATEGORY_POSTS_QUERY, { category, first: perPage, after }, { tags });
+  return (data.posts?.nodes ?? []).map(toPostSummary);
+}
+
+/** Slugs of all categories, for prerendering their first page. */
+export async function getCategorySlugs(): Promise<string[]> {
+  try {
+    const data = await wpQuery<{ categories: { nodes: { slug: string }[] } | null }>(
+      /* GraphQL */ `
+        query CategorySlugs {
+          categories(first: 100) {
+            nodes {
+              slug
+            }
+          }
+        }
+      `,
+      {},
+      { tags: ["wordpress", "categories"] },
+    );
+    return (data.categories?.nodes ?? []).map((category) => category.slug);
+  } catch (error) {
+    console.warn("No category slugs to prerender:", (error as Error).message);
+    return [];
+  }
+}
+
 type SiteIndexingResponse = {
   siteSettings: {
     siteSettingsFields: {

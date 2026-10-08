@@ -45,7 +45,12 @@ export default function HeroSection({
         </div>
       )}
 
-      <div className="mx-auto flex min-h-[260px] max-w-7xl flex-col justify-center px-4 py-14 sm:min-h-[320px] sm:px-6 lg:min-h-[380px] lg:px-8">
+      <div
+        className={`mx-auto flex max-w-7xl flex-col justify-center px-4 sm:px-6 lg:px-8 ${
+          // Without an image, there's nothing to show off, so keep the banner compact.
+          image ? "min-h-[260px] py-14 sm:min-h-[320px] lg:min-h-[380px]" : "py-10 lg:py-14"
+        }`}
+      >
         <div className="max-w-xl">
           {title && (
             <Heading className="text-4xl font-bold leading-tight tracking-tight text-neutral-900 sm:text-5xl">

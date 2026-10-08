@@ -1,7 +1,9 @@
 export { default as AuthorAvatar } from "./AuthorAvatar";
 export { default as CategoryBadge } from "./CategoryBadge";
+export { default as HorizontalPostCard } from "./HorizontalPostCard";
 export { default as NumberedPostItem } from "./NumberedPostItem";
 export { default as OverlayPostCard } from "./OverlayPostCard";
+export { default as Pagination, pageHref } from "./Pagination";
 export { default as PostCard } from "./PostCard";
 export { default as PostContent } from "./PostContent";
 export { default as PostImage } from "./PostImage";
