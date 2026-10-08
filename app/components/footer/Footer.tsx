@@ -116,23 +116,15 @@ export default async function Footer({ columns, legalLinks, socialLinks, logo = 
           </div>
         </div>
 
-        {/* Logo, socials and subscribe */}
+        {/* Logo and socials */}
         <div className="flex flex-col gap-6 border-b border-neutral-200 pb-8 sm:flex-row sm:items-center">
           <Link href="/" className="shrink-0" aria-label="Home">
             {logo}
           </Link>
 
-          <div className="flex flex-wrap items-center gap-6 sm:ml-auto">
-            <ul className="flex items-center gap-2">
-              {socialLinks ? <SocialLinkItems links={socialLinks} /> : <SiteSocialLinks />}
-            </ul>
-            <Link
-              href="/subscribe"
-              className="inline-flex h-10 items-center bg-[var(--header-brand)] px-5 text-sm font-semibold uppercase tracking-wider text-white transition hover:brightness-110"
-            >
-              Subscribe
-            </Link>
-          </div>
+          <ul className="flex items-center gap-2 sm:ml-auto">
+            {socialLinks ? <SocialLinkItems links={socialLinks} /> : <SiteSocialLinks />}
+          </ul>
         </div>
 
         {/* Link columns */}
