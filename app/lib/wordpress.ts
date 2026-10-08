@@ -390,6 +390,25 @@ export async function getLatestPosts(
   }
 }
 
+const SEARCH_POSTS_QUERY = /* GraphQL */ `
+  query SearchPosts($search: String!, $first: Int!) {
+    posts(first: $first, where: { search: $search }) {
+      nodes {
+        ...PostSummaryFields
+      }
+    }
+  }
+  ${POST_SUMMARY_FIELDS}
+`;
+
+/** Posts matching a search term, most relevant first (WordPress search over titles and content). Throws on failure. */
+export async function searchPosts(term: string, first = 6): Promise<PostSummary[]> {
+  const data = await wpQuery<PostsResponse>(SEARCH_POSTS_QUERY, { search: term, first }, {
+    tags: ["wordpress", "posts"],
+  });
+  return (data.posts?.nodes ?? []).map(toPostSummary);
+}
+
 type PopularPicksResponse = {
   siteSettings: {
     siteSettingsFields: {

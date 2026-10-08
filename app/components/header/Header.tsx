@@ -6,11 +6,11 @@ import AnnouncementBar from "./AnnouncementBar";
 import Logo from "./Logo";
 import MobileMenu from "./MobileMenu";
 import NavLinks from "./NavLinks";
+import SearchDialog from "./SearchDialog";
 import {
   FacebookIcon,
   InstagramIcon,
   LinkedInIcon,
-  SearchIcon,
   XIcon,
   YoutubeIcon,
 } from "./icons";
@@ -150,9 +150,7 @@ export default async function Header({
           </nav>
 
           <div className="ml-auto flex items-center">
-            <Link href="/search" aria-label="Search" className={iconButton}>
-              <SearchIcon className="h-6 w-6" />
-            </Link>
+            <SearchDialog buttonClassName={iconButton} />
           </div>
         </div>
       </div>
