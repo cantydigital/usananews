@@ -1,22 +1,22 @@
 import Image from "next/image";
 import Link from "next/link";
-import { getAnnouncements, getSiteLogo, getSocialLinks } from "@/app/lib/wordpress";
+import { getAnnouncements, getMenu, getSiteLogo, getSocialLinks } from "@/app/lib/wordpress";
 import type { ComponentType, ReactNode, SVGProps } from "react";
 import AnnouncementBar from "./AnnouncementBar";
 import Logo from "./Logo";
 import MobileMenu from "./MobileMenu";
 import NavLinks from "./NavLinks";
+import SearchDialog from "./SearchDialog";
 import {
   FacebookIcon,
   InstagramIcon,
   LinkedInIcon,
-  SearchIcon,
   XIcon,
   YoutubeIcon,
 } from "./icons";
 import type { NavLink, SocialLink, SocialNetwork } from "./types";
 
-const socialNetworks: Record<
+export const socialNetworks: Record<
   SocialNetwork,
   { label: string; Icon: ComponentType<SVGProps<SVGSVGElement>> }
 > = {
@@ -27,6 +27,7 @@ const socialNetworks: Record<
   x: { label: "X", Icon: XIcon },
 };
 
+/** Shown until a menu is assigned to the "Header Menu" location in WordPress. */
 export const defaultNavLinks: NavLink[] = [
   { label: "Gut Supps", href: "/gut-supps" },
   { label: "Joint Supps", href: "/joint-supps" },
@@ -43,6 +44,7 @@ export const defaultAnnouncements = [
 ];
 
 type HeaderProps = {
+  /** Defaults to the WordPress "Header Menu", then defaultNavLinks. */
   navLinks?: NavLink[];
   /** Defaults to the links set in WordPress Site Settings. */
   socialLinks?: SocialLink[];
@@ -55,7 +57,7 @@ type HeaderProps = {
 const iconButton =
   "inline-flex h-10 w-10 items-center justify-center rounded-full text-neutral-800 transition hover:bg-black/5";
 
-async function SiteLogo() {
+export async function SiteLogo() {
   const logo = await getSiteLogo();
   if (!logo) return <Logo className="h-12 w-auto" />;
 
@@ -101,14 +103,20 @@ async function SiteAnnouncements() {
   return <AnnouncementBar messages={announcements ?? defaultAnnouncements} />;
 }
 
-export default function Header({
-  navLinks = defaultNavLinks,
+export default async function Header({
+  navLinks,
   socialLinks,
   announcements,
   logo = <SiteLogo />,
 }: HeaderProps) {
+  // Top-level items of the WordPress "Header Menu"; sub-items aren't shown yet.
+  const links =
+    navLinks ??
+    (await getMenu("HEADER_MENU"))?.map(({ label, href, newTab }) => ({ label, href, newTab })) ??
+    defaultNavLinks;
+
   return (
-    <header className="relative z-30 w-full font-sans [--header-bg:#f7f6f3] [--header-brand:#534388]">
+    <header className="relative z-30 w-full font-sans">
       {/* Top announcement bar */}
       <div className="bg-[var(--header-brand)] text-white">
         <div className="mx-auto grid h-10 max-w-7xl grid-cols-1 sm:grid-cols-[1fr_auto_1fr] items-center gap-2 px-4 sm:px-6 lg:px-8">
@@ -131,19 +139,25 @@ export default function Header({
       {/* Main navigation */}
       <div className="relative border-b border-neutral-200 bg-[var(--header-bg)]">
         <div className="mx-auto flex h-[72px] max-w-7xl items-center gap-6 px-4 sm:px-6 lg:px-8">
-          <MobileMenu links={navLinks} />
+          <MobileMenu links={links} />
 
           <Link href="/" className="shrink-0" aria-label="Home">
             {logo}
           </Link>
 
           <nav aria-label="Main" className="hidden lg:block">
-            <NavLinks links={navLinks} className="flex items-center gap-7" />
+            <NavLinks links={links} className="flex items-center gap-7" />
           </nav>
 
-          <div className="ml-auto flex items-center">
-            <Link href="/search" aria-label="Search" className={iconButton}>
-              <SearchIcon className="h-6 w-6" />
+          <div className="ml-auto flex items-center gap-2">
+            <SearchDialog buttonClassName={iconButton} />
+            <Link
+              href="/submit-press-release"
+              className="inline-flex h-10 shrink-0 items-center rounded-md bg-[var(--header-brand)] px-3 text-xs font-bold uppercase tracking-wider text-white transition hover:brightness-110 sm:px-5"
+            >
+              {/* Short label where space is tight: phones, and small desktops showing the full nav */}
+              <span className="sm:hidden lg:inline xl:hidden">Submit PR</span>
+              <span className="hidden sm:inline lg:hidden xl:inline">Submit Press Release</span>
             </Link>
           </div>
         </div>

@@ -68,6 +68,56 @@ export function ChevronRightIcon(props: IconProps) {
   );
 }
 
+export function ChevronUpIcon(props: IconProps) {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden {...stroke} {...props}>
+      <path d="m18 15-6-6-6 6" />
+    </svg>
+  );
+}
+
+export function CalendarIcon(props: IconProps) {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden {...stroke} {...props}>
+      <rect x="3.5" y="5" width="17" height="15.5" rx="2" />
+      <path d="M3.5 10h17M8 3v4M16 3v4" />
+    </svg>
+  );
+}
+
+export function CommentIcon(props: IconProps) {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden {...stroke} {...props}>
+      <path d="M20.5 11.5a8 8 0 0 1-11.8 7.05L3.5 20l1.45-4.7A8 8 0 1 1 20.5 11.5Z" />
+    </svg>
+  );
+}
+
+export function MailIcon(props: IconProps) {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden {...stroke} {...props}>
+      <rect x="3" y="5" width="18" height="14" rx="2" />
+      <path d="m3.5 6.5 8.5 6.5 8.5-6.5" />
+    </svg>
+  );
+}
+
+export function PlusIcon(props: IconProps) {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden {...stroke} {...props}>
+      <path d="M12 5v14M5 12h14" />
+    </svg>
+  );
+}
+
+export function MinusIcon(props: IconProps) {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden {...stroke} {...props}>
+      <path d="M5 12h14" />
+    </svg>
+  );
+}
+
 export function SearchIcon(props: IconProps) {
   return (
     <svg viewBox="0 0 24 24" aria-hidden {...stroke} {...props}>
