@@ -149,8 +149,16 @@ export default async function Header({
             <NavLinks links={links} className="flex items-center gap-7" />
           </nav>
 
-          <div className="ml-auto flex items-center">
+          <div className="ml-auto flex items-center gap-2">
             <SearchDialog buttonClassName={iconButton} />
+            <Link
+              href="/submit-press-release"
+              className="inline-flex h-10 shrink-0 items-center rounded-md bg-[var(--header-brand)] px-3 text-xs font-bold uppercase tracking-wider text-white transition hover:brightness-110 sm:px-5"
+            >
+              {/* Short label where space is tight: phones, and small desktops showing the full nav */}
+              <span className="sm:hidden lg:inline xl:hidden">Submit PR</span>
+              <span className="hidden sm:inline lg:hidden xl:inline">Submit Press Release</span>
+            </Link>
           </div>
         </div>
       </div>
