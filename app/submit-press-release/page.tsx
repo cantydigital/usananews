@@ -1,7 +1,8 @@
 import type { Metadata } from "next";
+import { connection } from "next/server";
 import Breadcrumb from "@/app/components/content/Breadcrumb";
 import PressReleaseForm from "@/app/components/press-release/PressReleaseForm";
-import { getSubmissionCategories } from "@/app/lib/wordpress";
+import { getSubmissionCategories, type SubmissionCategory } from "@/app/lib/wordpress";
 
 export const metadata: Metadata = {
   title: "Submit a Press Release",
@@ -24,7 +25,13 @@ const guidelines = [
 ];
 
 export default async function SubmitPressReleasePage() {
-  const categories = await getSubmissionCategories();
+  // Render per request rather than at build time, so a WordPress outage during a build can't fail it or
+  // leave the form missing until the next deploy. The categories themselves stay cached.
+  await connection();
+  const categories: SubmissionCategory[] | null = await getSubmissionCategories().catch((error: Error) => {
+    console.error("Press release categories unavailable:", error.message);
+    return null;
+  });
 
   return (
     <main className="flex-1 bg-[var(--header-bg)] pb-12 pt-8 font-sans lg:pb-16 lg:pt-12">
@@ -63,7 +70,13 @@ export default async function SubmitPressReleasePage() {
             <p className="mt-2 mb-8 text-neutral-600">
               Please provide complete and accurate information. Fields marked * are required.
             </p>
-            <PressReleaseForm categories={categories} />
+            {categories ? (
+              <PressReleaseForm categories={categories} />
+            ) : (
+              <p role="alert" className="rounded-xl bg-red-50 p-5 text-sm font-semibold text-red-700">
+                Sorry, submissions are unavailable right now. Please try again in a few minutes.
+              </p>
+            )}
           </section>
 
           <aside className="flex flex-col gap-6 lg:sticky lg:top-8 lg:self-start">
