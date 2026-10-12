@@ -1319,28 +1319,40 @@ function escapeHtml(text: string) {
   return text.replace(/[&<>"']/g, (char) => `&#${char.charCodeAt(0)};`);
 }
 
+/** Plain text as escaped HTML paragraphs, so a visitor can never inject HTML into WP Admin. */
+function toParagraphs(text: string) {
+  return text
+    .split(/\n{2,}/)
+    .map((paragraph) => `<p>${escapeHtml(paragraph).replace(/\n/g, "<br>")}</p>`)
+    .join("\n");
+}
+
 /**
- * Saves a contact form enquiry as a private "Contact Submission" post via the WordPress REST API.
- * Uses WORDPRESS_FORMS_USERNAME / WORDPRESS_FORMS_APP_PASSWORD when set (a low-privilege user is
- * recommended), otherwise the main WordPress credentials. Throws if the save fails.
+ * REST API base URL and auth header for saving form submissions. Uses WORDPRESS_FORMS_USERNAME /
+ * WORDPRESS_FORMS_APP_PASSWORD when set (a low-privilege user is recommended), otherwise the main
+ * WordPress credentials.
  */
-export async function saveContactSubmission(submission: ContactSubmission): Promise<void> {
+function formsRestApi() {
   const endpoint = process.env.WORDPRESS_GRAPHQL_URL;
   const username = process.env.WORDPRESS_FORMS_USERNAME ?? process.env.WORDPRESS_USERNAME;
   const password = process.env.WORDPRESS_FORMS_APP_PASSWORD ?? process.env.WORDPRESS_APP_PASSWORD;
   if (!endpoint || !username || !password) throw new Error("WordPress env vars are not configured");
+  return {
+    base: `${new URL(endpoint).origin}/wp-json/wp/v2`,
+    authorization: `Basic ${Buffer.from(`${username}:${password}`).toString("base64")}`,
+  };
+}
 
-  // Store the message as escaped text so a visitor can never inject HTML into WP Admin.
-  const content = submission.message
-    .split(/\n{2,}/)
-    .map((paragraph) => `<p>${escapeHtml(paragraph).replace(/\n/g, "<br>")}</p>`)
-    .join("\n");
+/** Saves a contact form enquiry as a private "Contact Submission" post. Throws if the save fails. */
+export async function saveContactSubmission(submission: ContactSubmission): Promise<void> {
+  const { base, authorization } = formsRestApi();
+  const content = toParagraphs(submission.message);
 
-  const res = await fetch(`${new URL(endpoint).origin}/wp-json/wp/v2/contact-submissions`, {
+  const res = await fetch(`${base}/contact-submissions`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      Authorization: `Basic ${Buffer.from(`${username}:${password}`).toString("base64")}`,
+      Authorization: authorization,
     },
     body: JSON.stringify({
       title: `${submission.name} – ${submission.subject}`,
@@ -1361,6 +1373,105 @@ export async function saveContactSubmission(submission: ContactSubmission): Prom
     const detail = await res.text().catch(() => "");
     throw new Error(`Saving contact submission failed: ${res.status} ${detail.slice(0, 200)}`);
   }
+}
+
+export type SubmissionCategory = { id: number; name: string };
+
+/** "PR Categories" a press release can be filed under, A–Z. Throws if WordPress can't be reached. */
+export async function getSubmissionCategories(): Promise<SubmissionCategory[]> {
+  const data = await wpQuery<{ prCategories: { nodes: { databaseId: number; name: string | null; slug: string }[] } | null }>(
+    /* GraphQL */ `
+      query PressReleaseCategories {
+        prCategories(first: 100, where: { hideEmpty: false, orderby: NAME }) {
+          nodes {
+            databaseId
+            name
+            slug
+          }
+        }
+      }
+    `,
+    {},
+    { tags: ["wordpress", "pr-categories"] },
+  );
+  return (data.prCategories?.nodes ?? []).map((category) => ({
+    id: category.databaseId,
+    name: clean(category.name) ?? category.slug,
+  }));
+}
+
+export type PressReleaseSubmission = {
+  title: string;
+  subtitle: string;
+  categoryId: number;
+  content: string;
+  author: string;
+  company: string;
+  email: string;
+  phone: string;
+  purchaseEmail: string;
+};
+
+/**
+ * Saves a press release as a "Pending Review" Press Release in its PR Category, with the image (if any)
+ * uploaded as the featured image and the submitter's details in its custom fields, so an editor can
+ * review and publish it in WP Admin. Returns the post's admin edit URL. The forms user needs the Author
+ * role or higher to upload media. Throws if the save fails.
+ */
+export async function savePressReleaseSubmission(release: PressReleaseSubmission, image: File | null): Promise<string> {
+  const { base, authorization } = formsRestApi();
+
+  let featuredMedia: number | undefined;
+  if (image) {
+    const filename = image.name.replace(/[^\w.-]+/g, "-").slice(-100) || "press-release-image";
+    const res = await fetch(`${base}/media`, {
+      method: "POST",
+      headers: {
+        Authorization: authorization,
+        "Content-Type": image.type,
+        "Content-Disposition": `attachment; filename="${filename}"`,
+      },
+      body: await image.arrayBuffer(),
+      cache: "no-store",
+      signal: AbortSignal.timeout(30_000),
+    });
+    if (!res.ok) {
+      const detail = await res.text().catch(() => "");
+      throw new Error(`Uploading press release image failed: ${res.status} ${detail.slice(0, 200)}`);
+    }
+    featuredMedia = ((await res.json()) as { id: number }).id;
+  }
+
+  const res = await fetch(`${base}/press-release`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: authorization },
+    body: JSON.stringify({
+      title: release.title,
+      content: toParagraphs(release.content),
+      status: "pending",
+      "pr-category": [release.categoryId],
+      featured_media: featuredMedia,
+      // ACF "Press Release" field group. Empty optional fields go as null: ACF rejects "" for its Email fields.
+      acf: {
+        subtitle: release.subtitle || null,
+        contact_details: {
+          author: release.author,
+          company: release.company,
+          contact_email: release.email,
+          contact_phone: release.phone || null,
+          purchase_email: release.purchaseEmail || null,
+        },
+      },
+    }),
+    cache: "no-store",
+    signal: AbortSignal.timeout(15_000),
+  });
+  if (!res.ok) {
+    const detail = await res.text().catch(() => "");
+    throw new Error(`Saving press release failed: ${res.status} ${detail.slice(0, 200)}`);
+  }
+  const { id } = (await res.json()) as { id: number };
+  return `${base.replace(/\/wp-json\/wp\/v2$/, "")}/wp-admin/post.php?post=${id}&action=edit`;
 }
 
 /**
