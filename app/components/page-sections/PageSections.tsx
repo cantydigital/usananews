@@ -81,16 +81,19 @@ export default function PageSections({ sections, startsPage = false, breadcrumb,
               />
             );
           case "steps":
+            // Full-width bands sit flush against each other rather than with a strip of page between.
             return (
-              <GetStartedSection
-                key={i}
-                title={section.title}
-                description={section.description}
-                steps={section.steps}
-                bottomHtml={section.bottomHtml}
-                button={section.button}
-                headingLevel={first ? "h1" : "h2"}
-              />
+              <div key={i} className={sections[i - 1]?.type === "steps" ? "-mt-12 lg:-mt-16" : undefined}>
+                <GetStartedSection
+                  title={section.title}
+                  description={section.description}
+                  steps={section.steps}
+                  bottomHtml={section.bottomHtml}
+                  button={section.button}
+                  background={section.background}
+                  headingLevel={first ? "h1" : "h2"}
+                />
+              </div>
             );
         }
       })}

@@ -591,7 +591,11 @@ export type PageSection =
       /** Text under the steps, as HTML. */
       bottomHtml: string;
       button: SectionLink | null;
+      background: SectionBackground;
     };
+
+/** ACF "Section Background": white, a light brand tint, or the dark brand colour. */
+export type SectionBackground = "light" | "medium" | "dark";
 
 export type GetStartedStep = {
   title: string;
@@ -708,6 +712,7 @@ type PageSectionNode =
       bottomDescription: string | null;
       buttonText: string | null;
       buttonUrl: string | null;
+      sectionBackground: string[] | string | null;
       steps: { title: string | null; description: string | null; iconImage: MediaEdge }[] | null;
     };
 
@@ -803,6 +808,7 @@ const CONTENT_QUERY = /* GraphQL */ `
               bottomDescription
               buttonText
               buttonUrl
+              sectionBackground
               steps {
                 title
                 description
@@ -945,12 +951,20 @@ function toPageSections(rows: PageSectionNode[] | null | undefined): PageSection
             }),
             bottomHtml: tidyHtml(row.bottomDescription),
             button: toSectionLink(row.buttonText, row.buttonUrl),
+            background: toSectionBackground(row.sectionBackground, "dark"),
           },
         ];
       default:
         return [];
     }
   });
+}
+
+/** Reads an ACF "Section Background" select, e.g. ["Medium"]; anything else gets the fallback. */
+function toSectionBackground(value: string[] | string | null, fallback: SectionBackground): SectionBackground {
+  // ACF selects arrive as a list of the chosen labels.
+  const choice = [value].flat()[0]?.trim().toLowerCase();
+  return choice === "light" || choice === "medium" || choice === "dark" ? choice : fallback;
 }
 
 /** A button from separate text and link fields, or null unless both are filled in. */
