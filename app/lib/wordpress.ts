@@ -1486,6 +1486,14 @@ export type PressReleaseSummary = {
   image: { url: string; alt: string; width: number; height: number } | null;
 };
 
+/** A press release page: the card fields plus the body and contact name. */
+export type PressRelease = PressReleaseSummary & {
+  /** Rendered block-editor HTML. */
+  content: string;
+  contactName: string | null;
+  seo: SeoMeta;
+};
+
 type PressReleaseNode = {
   date: string;
   link: string;
@@ -1493,9 +1501,10 @@ type PressReleaseNode = {
   content: { rendered: string };
   acf: {
     subtitle?: string | null;
-    contact_details?: { company?: string | null } | null;
+    contact_details?: { author?: string | null; company?: string | null } | null;
     feature_press_release?: boolean | null;
   } | null;
+  yoast_head_json?: { title?: string; description?: string } | null;
   _embedded?: {
     "wp:featuredmedia"?: {
       source_url?: string;
@@ -1506,35 +1515,47 @@ type PressReleaseNode = {
   };
 };
 
-/** Recent press releases searched for featured ones; ACF fields can't be filtered on server-side. */
-const FEATURED_PRESS_RELEASE_SCAN = 50;
-
 /**
- * Newest published press releases with "Feature Press Release" ticked, from the REST API: the ACF
- * Press Release field group isn't shown in GraphQL. Returns [] if none are featured or WordPress
- * can't be reached.
+ * Published press releases from the REST API, newest first; used because the ACF Press Release field
+ * group isn't shown in GraphQL. Successful responses are cached like wpQuery's. Throws on failure.
  */
-export async function getFeaturedPressReleases(count = 3): Promise<PressReleaseSummary[]> {
+async function fetchPressReleases(params: Record<string, string>): Promise<PressReleaseNode[]> {
   const fetchNodes = async () => {
     const { base, authorization } = formsRestApi();
-    const url =
-      `${base}/press-release?status=publish&per_page=${FEATURED_PRESS_RELEASE_SCAN}` +
-      "&_embed=wp:featuredmedia,wp:term&_fields=date,link,title,content,acf,_links,_embedded";
+    const query = new URLSearchParams({
+      ...params,
+      status: "publish",
+      _embed: "wp:featuredmedia,wp:term",
+      _fields: "date,link,title,content,acf,yoast_head_json,_links,_embedded",
+    });
     const res = await withRequestSlot(() =>
-      fetch(url, { headers: { Authorization: authorization }, cache: "no-store", signal: AbortSignal.timeout(20_000) }),
+      fetch(`${base}/press-release?${query}`, {
+        headers: { Authorization: authorization },
+        cache: "no-store",
+        signal: AbortSignal.timeout(20_000),
+      }),
     );
     if (!res.ok) throw new Error(`Fetching press releases failed: ${res.status}`);
     return (await res.json()) as PressReleaseNode[];
   };
 
+  if (process.env.NODE_ENV === "development") return fetchNodes();
+  return unstable_cache(fetchNodes, ["wordpress-rest", "press-releases", JSON.stringify(params)], {
+    revalidate: 300,
+    tags: ["wordpress", "press-releases"],
+  })();
+}
+
+/** Recent press releases searched for featured ones; ACF fields can't be filtered on server-side. */
+const FEATURED_PRESS_RELEASE_SCAN = 50;
+
+/**
+ * Newest published press releases with "Feature Press Release" ticked.
+ * Returns [] if none are featured or WordPress can't be reached.
+ */
+export async function getFeaturedPressReleases(count = 3): Promise<PressReleaseSummary[]> {
   try {
-    const nodes =
-      process.env.NODE_ENV === "development"
-        ? await fetchNodes()
-        : await unstable_cache(fetchNodes, ["wordpress-rest", "featured-press-releases"], {
-            revalidate: 300,
-            tags: ["wordpress", "press-releases"],
-          })();
+    const nodes = await fetchPressReleases({ per_page: String(FEATURED_PRESS_RELEASE_SCAN) });
     return nodes
       .filter((node) => node.acf?.feature_press_release)
       .slice(0, count)
@@ -1543,6 +1564,24 @@ export async function getFeaturedPressReleases(count = 3): Promise<PressReleaseS
     console.warn("Hiding featured press releases:", (error as Error).message);
     return [];
   }
+}
+
+/**
+ * The published press release with this slug, or null if there isn't one.
+ * Throws if WordPress can't be reached, so an outage isn't cached as a 404.
+ */
+export async function getPressRelease(slug: string): Promise<PressRelease | null> {
+  const [node] = await fetchPressReleases({ slug });
+  if (!node) return null;
+  return {
+    ...toPressReleaseSummary(node),
+    content: tidyHtml(node.content.rendered),
+    contactName: clean(node.acf?.contact_details?.author),
+    seo: {
+      title: clean(node.yoast_head_json?.title),
+      description: clean(node.yoast_head_json?.description),
+    },
+  };
 }
 
 function toPressReleaseSummary(node: PressReleaseNode): PressReleaseSummary {
