@@ -2,6 +2,7 @@ import type { BreadcrumbItem } from "@/app/components/content/Breadcrumb";
 import type { PageSection } from "@/app/lib/wordpress";
 import ContactFormSection from "./ContactFormSection";
 import FaqSection from "./FaqSection";
+import GetStartedSection from "./GetStartedSection";
 import HeroSection from "./HeroSection";
 import ImageWithTextSection from "./ImageWithTextSection";
 import PricingSection from "./PricingSection";
@@ -75,6 +76,18 @@ export default function PageSections({ sections, startsPage = false, breadcrumb,
                 title={section.title}
                 plans={section.plans}
                 descriptionHtml={section.descriptionHtml}
+                button={section.button}
+                headingLevel={first ? "h1" : "h2"}
+              />
+            );
+          case "steps":
+            return (
+              <GetStartedSection
+                key={i}
+                title={section.title}
+                description={section.description}
+                steps={section.steps}
+                bottomHtml={section.bottomHtml}
                 button={section.button}
                 headingLevel={first ? "h1" : "h2"}
               />

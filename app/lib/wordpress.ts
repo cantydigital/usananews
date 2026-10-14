@@ -582,7 +582,24 @@ export type PageSection =
       descriptionHtml: string;
       button: SectionLink | null;
       plans: PricingPlan[];
+    }
+  | {
+      type: "steps";
+      title: string | null;
+      description: string | null;
+      steps: GetStartedStep[];
+      /** Text under the steps, as HTML. */
+      bottomHtml: string;
+      button: SectionLink | null;
     };
+
+export type GetStartedStep = {
+  title: string;
+  /** As HTML from the WYSIWYG field. */
+  descriptionHtml: string;
+  /** Shown in place of the step number when set. */
+  icon: SectionImage | null;
+};
 
 export type SectionLink = { label: string; href: string };
 
@@ -683,6 +700,15 @@ type PageSectionNode =
             features: { featureTitle: string | null }[] | null;
           }[]
         | null;
+    }
+  | {
+      __typename: "PageContentPageContentGetStartedStepsLayout";
+      title: string | null;
+      shortDescription: string | null;
+      bottomDescription: string | null;
+      buttonText: string | null;
+      buttonUrl: string | null;
+      steps: { title: string | null; description: string | null; iconImage: MediaEdge }[] | null;
     };
 
 const CONTENT_QUERY = /* GraphQL */ `
@@ -768,6 +794,22 @@ const CONTENT_QUERY = /* GraphQL */ `
                 footerNote
                 features {
                   featureTitle
+                }
+              }
+            }
+            ... on PageContentPageContentGetStartedStepsLayout {
+              title
+              shortDescription
+              bottomDescription
+              buttonText
+              buttonUrl
+              steps {
+                title
+                description
+                iconImage {
+                  node {
+                    ...SectionImageFields
+                  }
                 }
               }
             }
@@ -887,6 +929,22 @@ function toPageSections(rows: PageSectionNode[] | null | undefined): PageSection
                 },
               ];
             }),
+          },
+        ];
+      case "PageContentPageContentGetStartedStepsLayout":
+        return [
+          {
+            type: "steps",
+            title: clean(row.title),
+            description: row.shortDescription ? stripHtml(row.shortDescription) || null : null,
+            steps: (row.steps ?? []).flatMap((step): GetStartedStep[] => {
+              const title = clean(step.title);
+              return title
+                ? [{ title, descriptionHtml: tidyHtml(step.description), icon: toSectionImage(step.iconImage, "") }]
+                : [];
+            }),
+            bottomHtml: tidyHtml(row.bottomDescription),
+            button: toSectionLink(row.buttonText, row.buttonUrl),
           },
         ];
       default:
