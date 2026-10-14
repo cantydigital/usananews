@@ -3,18 +3,20 @@
 import Form from "next/form";
 import type { ChangeEvent } from "react";
 import { FilterIcon, SearchIcon } from "@/app/components/header/icons";
-import type { PressReleaseSort } from "@/app/lib/wordpress";
+import type { ListingSort } from "@/app/lib/wordpress";
 
 type Props = {
   /** Listing page path the form submits to. */
   action: string;
+  /** What's being searched, e.g. "press releases"; used in the placeholder and labels. */
+  noun: string;
   categories: { slug: string; name: string }[];
   search: string;
   category: string;
-  sort: PressReleaseSort;
+  sort: ListingSort;
 };
 
-const sortOptions: { value: PressReleaseSort; label: string }[] = [
+const sortOptions: { value: ListingSort; label: string }[] = [
   { value: "newest", label: "Newest First" },
   { value: "oldest", label: "Oldest First" },
   { value: "title", label: "Title (A–Z)" },
@@ -24,19 +26,19 @@ const fieldClass =
   "h-10 rounded-lg bg-white text-sm text-neutral-900 ring-1 ring-neutral-300 transition focus:outline-none focus:ring-2 focus:ring-[var(--header-brand)]";
 
 /** Search box plus category and sort menus. A GET form, so it works without JavaScript; menus apply on change. */
-export default function PressReleaseFilters({ action, categories, search, category, sort }: Props) {
+export default function ListingFilters({ action, noun, categories, search, category, sort }: Props) {
   const submit = (event: ChangeEvent<HTMLSelectElement>) => event.currentTarget.form?.requestSubmit();
 
   return (
     <Form action={action} className="flex flex-col gap-3 sm:flex-row sm:items-center">
       <label className="relative flex-1">
-        <span className="sr-only">Search press releases</span>
+        <span className="sr-only">Search {noun}</span>
         <SearchIcon className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-neutral-400" />
         <input
           type="search"
           name="q"
           defaultValue={search}
-          placeholder="Search press releases…"
+          placeholder={`Search ${noun}…`}
           className={`${fieldClass} w-full pl-9 pr-3 placeholder:text-neutral-400`}
         />
       </label>

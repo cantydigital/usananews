@@ -1582,24 +1582,19 @@ type PressReleaseNode = {
   };
 };
 
-type PressReleasePage = { nodes: PressReleaseNode[]; total: number; totalPages: number };
+type RestPage<T> = { nodes: T[]; total: number; totalPages: number };
 
 /**
- * Published press releases from the REST API, newest first unless `orderby`/`order` say otherwise; used
- * because the ACF Press Release field group isn't shown in GraphQL. Successful responses are cached like
- * wpQuery's, except searches, whose free-text keys would grow the cache without bound. Throws on failure.
+ * One page of a REST API collection, e.g. "posts", with WordPress's totals. Used where GraphQL falls short:
+ * fields it doesn't expose, and totals for paged listings. Successful responses are cached like wpQuery's,
+ * except searches, whose free-text keys would grow the cache without bound. Throws on failure.
  */
-async function fetchPressReleases(params: Record<string, string>): Promise<PressReleasePage> {
-  const fetchPage = async (): Promise<PressReleasePage> => {
+async function fetchRestPage<T>(collection: string, params: Record<string, string>, tags: string[]): Promise<RestPage<T>> {
+  const fetchPage = async (): Promise<RestPage<T>> => {
     const { base, authorization } = formsRestApi();
-    const query = new URLSearchParams({
-      ...params,
-      status: "publish",
-      _embed: "wp:featuredmedia,wp:term",
-      _fields: "date,link,title,content,acf,yoast_head_json,_links,_embedded",
-    });
+    const query = new URLSearchParams({ ...params, status: "publish" });
     const res = await withRequestSlot(() =>
-      fetch(`${base}/press-release?${query}`, {
+      fetch(`${base}/${collection}?${query}`, {
         headers: { Authorization: authorization },
         cache: "no-store",
         signal: AbortSignal.timeout(20_000),
@@ -1610,19 +1605,29 @@ async function fetchPressReleases(params: Record<string, string>): Promise<Press
       const body = (await res.json().catch(() => null)) as { code?: string } | null;
       if (body?.code === "rest_post_invalid_page_number") return { nodes: [], total: 0, totalPages: 0 };
     }
-    if (!res.ok) throw new Error(`Fetching press releases failed: ${res.status}`);
+    if (!res.ok) throw new Error(`Fetching ${collection} failed: ${res.status}`);
     return {
-      nodes: (await res.json()) as PressReleaseNode[],
+      nodes: (await res.json()) as T[],
       total: Number(res.headers.get("X-WP-Total")) || 0,
       totalPages: Number(res.headers.get("X-WP-TotalPages")) || 0,
     };
   };
 
   if (process.env.NODE_ENV === "development" || params.search) return fetchPage();
-  return unstable_cache(fetchPage, ["wordpress-rest", "press-releases", JSON.stringify(params)], {
-    revalidate: 300,
-    tags: ["wordpress", "press-releases"],
-  })();
+  return unstable_cache(fetchPage, ["wordpress-rest", collection, JSON.stringify(params)], { revalidate: 300, tags })();
+}
+
+/** Published press releases, newest first unless `orderby`/`order` say otherwise. REST because the ACF Press Release field group isn't shown in GraphQL. */
+function fetchPressReleases(params: Record<string, string>) {
+  return fetchRestPage<PressReleaseNode>(
+    "press-release",
+    {
+      ...params,
+      _embed: "wp:featuredmedia,wp:term",
+      _fields: "date,link,title,content,acf,yoast_head_json,_links,_embedded",
+    },
+    ["wordpress", "press-releases"],
+  );
 }
 
 /** Press releases fetched for the homepage lists. ACF fields can't be filtered server-side, so featured ones are picked from these. */
@@ -1659,9 +1664,10 @@ export async function getRecentPressReleases(count = 4): Promise<PressReleaseSum
   }
 }
 
-export type PressReleaseSort = "newest" | "oldest" | "title";
+/** Sort orders offered on the listing pages. */
+export type ListingSort = "newest" | "oldest" | "title";
 
-const PRESS_RELEASE_ORDER: Record<PressReleaseSort, { orderby: string; order: string }> = {
+const LISTING_ORDER: Record<ListingSort, { orderby: string; order: string }> = {
   newest: { orderby: "date", order: "desc" },
   oldest: { orderby: "date", order: "asc" },
   title: { orderby: "title", order: "asc" },
@@ -1688,16 +1694,107 @@ export async function getPressReleaseListing({
   perPage?: number;
   search?: string;
   categoryId?: number;
-  sort?: PressReleaseSort;
+  sort?: ListingSort;
 }): Promise<PressReleaseListing> {
   const { nodes, total, totalPages } = await fetchPressReleases({
     page: String(page),
     per_page: String(perPage),
-    ...PRESS_RELEASE_ORDER[sort],
+    ...LISTING_ORDER[sort],
     ...(search && { search }),
     ...(categoryId && { "pr-category": String(categoryId) }),
   });
   return { releases: nodes.map(toPressReleaseSummary), total, totalPages };
+}
+
+export type NewsListing = {
+  posts: PostSummary[];
+  total: number;
+  totalPages: number;
+};
+
+const POSTS_BY_ID_QUERY = /* GraphQL */ `
+  query PostsById($ids: [ID], $first: Int!) {
+    posts(first: $first, where: { in: $ids }) {
+      nodes {
+        databaseId
+        ...PostSummaryFields
+      }
+    }
+  }
+  ${POST_SUMMARY_FIELDS}
+`;
+
+/**
+ * One page of published posts for the News page, optionally searched and limited to one category (by ID).
+ * WPGraphQL has no totals or page numbers, so the REST API picks the page's posts and counts them, and
+ * GraphQL loads them as the same cards used everywhere else. Throws if WordPress can't be reached.
+ */
+export async function getNewsListing({
+  page = 1,
+  perPage = 12,
+  search,
+  categoryId,
+  sort = "newest",
+}: {
+  page?: number;
+  perPage?: number;
+  search?: string;
+  categoryId?: number;
+  sort?: ListingSort;
+}): Promise<NewsListing> {
+  const { nodes, total, totalPages } = await fetchRestPage<{ id: number }>(
+    "posts",
+    {
+      page: String(page),
+      per_page: String(perPage),
+      _fields: "id",
+      ...LISTING_ORDER[sort],
+      ...(search && { search }),
+      ...(categoryId && { categories: String(categoryId) }),
+    },
+    ["wordpress", "posts"],
+  );
+  if (nodes.length === 0) return { posts: [], total, totalPages };
+
+  const ids = nodes.map((node) => node.id);
+  const data = await wpQuery<{ posts: { nodes: (PostSummaryNode & { databaseId: number })[] } | null }>(
+    POSTS_BY_ID_QUERY,
+    { ids, first: ids.length },
+    { tags: ["wordpress", "posts"] },
+  );
+  // GraphQL returns them newest first; put them back in the REST API's order.
+  const byId = new Map((data.posts?.nodes ?? []).map((post) => [post.databaseId, post]));
+  const posts = ids.flatMap((id) => {
+    const post = byId.get(id);
+    return post ? [toPostSummary(post)] : [];
+  });
+  return { posts, total, totalPages };
+}
+
+export type PostCategory = { id: number; name: string; slug: string };
+
+/** Post categories with at least one post, A–Z, for the News page filter. Throws if WordPress can't be reached. */
+export async function getPostCategories(): Promise<PostCategory[]> {
+  const data = await wpQuery<{ categories: { nodes: { databaseId: number; name: string | null; slug: string }[] } | null }>(
+    /* GraphQL */ `
+      query PostCategories {
+        categories(first: 100, where: { hideEmpty: true, orderby: NAME }) {
+          nodes {
+            databaseId
+            name
+            slug
+          }
+        }
+      }
+    `,
+    {},
+    { tags: ["wordpress", "categories"] },
+  );
+  return (data.categories?.nodes ?? []).map((category) => ({
+    id: category.databaseId,
+    name: clean(category.name) ?? category.slug,
+    slug: category.slug,
+  }));
 }
 
 /**
