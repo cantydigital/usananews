@@ -1482,6 +1482,7 @@ export type PressReleaseSummary = {
   excerpt: string;
   date: string;
   company: string | null;
+  contactName: string | null;
   category: string | null;
   image: { url: string; alt: string; width: number; height: number } | null;
 };
@@ -1490,7 +1491,6 @@ export type PressReleaseSummary = {
 export type PressRelease = PressReleaseSummary & {
   /** Rendered block-editor HTML. */
   content: string;
-  contactName: string | null;
   contactEmail: string | null;
   contactPhone: string | null;
   seo: SeoMeta;
@@ -1553,8 +1553,8 @@ async function fetchPressReleases(params: Record<string, string>): Promise<Press
   })();
 }
 
-/** Recent press releases searched for featured ones; ACF fields can't be filtered on server-side. */
-const FEATURED_PRESS_RELEASE_SCAN = 50;
+/** Press releases fetched for the homepage lists. ACF fields can't be filtered server-side, so featured ones are picked from these. */
+const PRESS_RELEASE_SCAN = 50;
 
 /**
  * Newest published press releases with "Feature Press Release" ticked.
@@ -1562,13 +1562,27 @@ const FEATURED_PRESS_RELEASE_SCAN = 50;
  */
 export async function getFeaturedPressReleases(count = 3): Promise<PressReleaseSummary[]> {
   try {
-    const nodes = await fetchPressReleases({ per_page: String(FEATURED_PRESS_RELEASE_SCAN) });
+    const nodes = await fetchPressReleases({ per_page: String(PRESS_RELEASE_SCAN) });
     return nodes
       .filter((node) => node.acf?.feature_press_release)
       .slice(0, count)
       .map(toPressReleaseSummary);
   } catch (error) {
     console.warn("Hiding featured press releases:", (error as Error).message);
+    return [];
+  }
+}
+
+/**
+ * Newest published press releases, featured or not. Shares the featured list's request.
+ * Returns [] if there are none or WordPress can't be reached.
+ */
+export async function getRecentPressReleases(count = 4): Promise<PressReleaseSummary[]> {
+  try {
+    const nodes = await fetchPressReleases({ per_page: String(PRESS_RELEASE_SCAN) });
+    return nodes.slice(0, count).map(toPressReleaseSummary);
+  } catch (error) {
+    console.warn("Hiding recent press releases:", (error as Error).message);
     return [];
   }
 }
@@ -1583,7 +1597,6 @@ export async function getPressRelease(slug: string): Promise<PressRelease | null
   return {
     ...toPressReleaseSummary(node),
     content: tidyHtml(node.content.rendered),
-    contactName: clean(node.acf?.contact_details?.author),
     contactEmail: clean(node.acf?.contact_details?.contact_email),
     contactPhone: clean(node.acf?.contact_details?.contact_phone),
     seo: {
@@ -1605,6 +1618,7 @@ function toPressReleaseSummary(node: PressReleaseNode): PressReleaseSummary {
     excerpt: excerpt.length > 240 ? `${excerpt.slice(0, 240).trimEnd()}…` : excerpt,
     date: node.date,
     company: clean(node.acf?.contact_details?.company),
+    contactName: clean(node.acf?.contact_details?.author),
     category: clean(category?.name),
     image: image?.source_url
       ? {
