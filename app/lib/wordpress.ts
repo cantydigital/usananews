@@ -1486,11 +1486,13 @@ export type PressReleaseSummary = {
   image: { url: string; alt: string; width: number; height: number } | null;
 };
 
-/** A press release page: the card fields plus the body and contact name. */
+/** A press release page: the card fields plus the body and media contact. */
 export type PressRelease = PressReleaseSummary & {
   /** Rendered block-editor HTML. */
   content: string;
   contactName: string | null;
+  contactEmail: string | null;
+  contactPhone: string | null;
   seo: SeoMeta;
 };
 
@@ -1501,7 +1503,12 @@ type PressReleaseNode = {
   content: { rendered: string };
   acf: {
     subtitle?: string | null;
-    contact_details?: { author?: string | null; company?: string | null } | null;
+    contact_details?: {
+      author?: string | null;
+      company?: string | null;
+      contact_email?: string | null;
+      contact_phone?: string | null;
+    } | null;
     feature_press_release?: boolean | null;
   } | null;
   yoast_head_json?: { title?: string; description?: string } | null;
@@ -1577,6 +1584,8 @@ export async function getPressRelease(slug: string): Promise<PressRelease | null
     ...toPressReleaseSummary(node),
     content: tidyHtml(node.content.rendered),
     contactName: clean(node.acf?.contact_details?.author),
+    contactEmail: clean(node.acf?.contact_details?.contact_email),
+    contactPhone: clean(node.acf?.contact_details?.contact_phone),
     seo: {
       title: clean(node.yoast_head_json?.title),
       description: clean(node.yoast_head_json?.description),

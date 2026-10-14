@@ -3,6 +3,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Breadcrumb } from "@/app/components/content";
+import { MailIcon, PhoneIcon } from "@/app/components/header/icons";
 import { formatDate, PostContent, ShareButtons } from "@/app/components/posts";
 import { Sidebar } from "@/app/components/sidebar";
 import { SITE_URL } from "@/app/lib/site";
@@ -25,6 +26,9 @@ export async function generateMetadata({ params }: PageProps<"/press-release/[sl
     description: release.seo.description ?? release.subtitle ?? release.excerpt,
   };
 }
+
+const contactLinkClass =
+  "inline-flex items-center gap-2 font-medium text-[var(--header-brand)] underline-offset-4 hover:underline";
 
 export default async function PressReleasePage({ params }: PageProps<"/press-release/[slug]">) {
   const { slug } = await params;
@@ -97,6 +101,26 @@ export default async function PressReleasePage({ params }: PageProps<"/press-rel
               </h2>
               <p className="mt-2 font-semibold text-neutral-900">{release.contactName ?? release.company}</p>
               {release.contactName && release.company && <p className="text-sm text-neutral-600">{release.company}</p>}
+              {(release.contactEmail || release.contactPhone) && (
+                <ul className="mt-4 flex flex-col gap-2 text-sm sm:flex-row sm:flex-wrap sm:gap-x-6">
+                  {release.contactEmail && (
+                    <li>
+                      <a href={`mailto:${release.contactEmail}`} className={contactLinkClass}>
+                        <MailIcon className="h-4 w-4 shrink-0" />
+                        <span className="break-all">{release.contactEmail}</span>
+                      </a>
+                    </li>
+                  )}
+                  {release.contactPhone && (
+                    <li>
+                      <a href={`tel:${release.contactPhone.replace(/[^\d+]/g, "")}`} className={contactLinkClass}>
+                        <PhoneIcon className="h-4 w-4 shrink-0" />
+                        {release.contactPhone}
+                      </a>
+                    </li>
+                  )}
+                </ul>
+              )}
             </section>
           )}
 
