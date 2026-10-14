@@ -1435,7 +1435,7 @@ export async function saveContactSubmission(submission: ContactSubmission): Prom
   }
 }
 
-export type SubmissionCategory = { id: number; name: string };
+export type SubmissionCategory = { id: number; name: string; slug: string };
 
 /** "PR Categories" a press release can be filed under, A–Z. Throws if WordPress can't be reached. */
 export async function getSubmissionCategories(): Promise<SubmissionCategory[]> {
@@ -1457,6 +1457,7 @@ export async function getSubmissionCategories(): Promise<SubmissionCategory[]> {
   return (data.prCategories?.nodes ?? []).map((category) => ({
     id: category.databaseId,
     name: clean(category.name) ?? category.slug,
+    slug: category.slug,
   }));
 }
 
@@ -1581,12 +1582,15 @@ type PressReleaseNode = {
   };
 };
 
+type PressReleasePage = { nodes: PressReleaseNode[]; total: number; totalPages: number };
+
 /**
- * Published press releases from the REST API, newest first; used because the ACF Press Release field
- * group isn't shown in GraphQL. Successful responses are cached like wpQuery's. Throws on failure.
+ * Published press releases from the REST API, newest first unless `orderby`/`order` say otherwise; used
+ * because the ACF Press Release field group isn't shown in GraphQL. Successful responses are cached like
+ * wpQuery's, except searches, whose free-text keys would grow the cache without bound. Throws on failure.
  */
-async function fetchPressReleases(params: Record<string, string>): Promise<PressReleaseNode[]> {
-  const fetchNodes = async () => {
+async function fetchPressReleases(params: Record<string, string>): Promise<PressReleasePage> {
+  const fetchPage = async (): Promise<PressReleasePage> => {
     const { base, authorization } = formsRestApi();
     const query = new URLSearchParams({
       ...params,
@@ -1601,12 +1605,21 @@ async function fetchPressReleases(params: Record<string, string>): Promise<Press
         signal: AbortSignal.timeout(20_000),
       }),
     );
+    // A page past the end is a 400 from WordPress; treat it as empty rather than an outage.
+    if (res.status === 400 && params.page) {
+      const body = (await res.json().catch(() => null)) as { code?: string } | null;
+      if (body?.code === "rest_post_invalid_page_number") return { nodes: [], total: 0, totalPages: 0 };
+    }
     if (!res.ok) throw new Error(`Fetching press releases failed: ${res.status}`);
-    return (await res.json()) as PressReleaseNode[];
+    return {
+      nodes: (await res.json()) as PressReleaseNode[],
+      total: Number(res.headers.get("X-WP-Total")) || 0,
+      totalPages: Number(res.headers.get("X-WP-TotalPages")) || 0,
+    };
   };
 
-  if (process.env.NODE_ENV === "development") return fetchNodes();
-  return unstable_cache(fetchNodes, ["wordpress-rest", "press-releases", JSON.stringify(params)], {
+  if (process.env.NODE_ENV === "development" || params.search) return fetchPage();
+  return unstable_cache(fetchPage, ["wordpress-rest", "press-releases", JSON.stringify(params)], {
     revalidate: 300,
     tags: ["wordpress", "press-releases"],
   })();
@@ -1621,7 +1634,7 @@ const PRESS_RELEASE_SCAN = 50;
  */
 export async function getFeaturedPressReleases(count = 3): Promise<PressReleaseSummary[]> {
   try {
-    const nodes = await fetchPressReleases({ per_page: String(PRESS_RELEASE_SCAN) });
+    const { nodes } = await fetchPressReleases({ per_page: String(PRESS_RELEASE_SCAN) });
     return nodes
       .filter((node) => node.acf?.feature_press_release)
       .slice(0, count)
@@ -1638,7 +1651,7 @@ export async function getFeaturedPressReleases(count = 3): Promise<PressReleaseS
  */
 export async function getRecentPressReleases(count = 4): Promise<PressReleaseSummary[]> {
   try {
-    const nodes = await fetchPressReleases({ per_page: String(PRESS_RELEASE_SCAN) });
+    const { nodes } = await fetchPressReleases({ per_page: String(PRESS_RELEASE_SCAN) });
     return nodes.slice(0, count).map(toPressReleaseSummary);
   } catch (error) {
     console.warn("Hiding recent press releases:", (error as Error).message);
@@ -1646,12 +1659,55 @@ export async function getRecentPressReleases(count = 4): Promise<PressReleaseSum
   }
 }
 
+export type PressReleaseSort = "newest" | "oldest" | "title";
+
+const PRESS_RELEASE_ORDER: Record<PressReleaseSort, { orderby: string; order: string }> = {
+  newest: { orderby: "date", order: "desc" },
+  oldest: { orderby: "date", order: "asc" },
+  title: { orderby: "title", order: "asc" },
+};
+
+export type PressReleaseListing = {
+  releases: PressReleaseSummary[];
+  total: number;
+  totalPages: number;
+};
+
+/**
+ * One page of published press releases for the listing page, optionally searched and limited to one
+ * PR Category (by its ID). Throws if WordPress can't be reached.
+ */
+export async function getPressReleaseListing({
+  page = 1,
+  perPage = 10,
+  search,
+  categoryId,
+  sort = "newest",
+}: {
+  page?: number;
+  perPage?: number;
+  search?: string;
+  categoryId?: number;
+  sort?: PressReleaseSort;
+}): Promise<PressReleaseListing> {
+  const { nodes, total, totalPages } = await fetchPressReleases({
+    page: String(page),
+    per_page: String(perPage),
+    ...PRESS_RELEASE_ORDER[sort],
+    ...(search && { search }),
+    ...(categoryId && { "pr-category": String(categoryId) }),
+  });
+  return { releases: nodes.map(toPressReleaseSummary), total, totalPages };
+}
+
 /**
  * The published press release with this slug, or null if there isn't one.
  * Throws if WordPress can't be reached, so an outage isn't cached as a 404.
  */
 export async function getPressRelease(slug: string): Promise<PressRelease | null> {
-  const [node] = await fetchPressReleases({ slug });
+  const {
+    nodes: [node],
+  } = await fetchPressReleases({ slug });
   if (!node) return null;
   return {
     ...toPressReleaseSummary(node),

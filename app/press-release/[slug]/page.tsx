@@ -40,7 +40,9 @@ export default async function PressReleasePage({ params }: PageProps<"/press-rel
       <div className="mx-auto grid max-w-7xl gap-12 px-4 py-8 sm:px-6 lg:grid-cols-[minmax(0,1fr)_320px] lg:px-8 lg:py-12 xl:grid-cols-[minmax(0,1fr)_340px]">
         <article className="min-w-0">
           <header>
-            <Breadcrumb items={[{ label: "Home", href: "/" }, { label: "Press Release" }]} />
+            <Breadcrumb
+              items={[{ label: "Home", href: "/" }, { label: "Press Releases", href: "/press-releases" }, { label: release.title }]}
+            />
 
             <div className="mt-6 flex flex-wrap items-center gap-2">
               <span className="inline-block rounded-sm bg-[var(--header-brand)] px-2 py-1 text-[11px] font-bold uppercase leading-none tracking-wider text-white">

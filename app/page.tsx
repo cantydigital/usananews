@@ -37,7 +37,7 @@ export default async function Home() {
       <FeaturedPressReleases releases={featuredPressReleases} />
       <PostGrid title="Top Stories" posts={posts.slice(HERO_COUNT)} viewAllHref="/news" />
       <CategoryTabs />
-      <RecentPressReleases releases={recentPressReleases} />
+      <RecentPressReleases releases={recentPressReleases} viewAllHref="/press-releases" />
     </main>
   );
 }

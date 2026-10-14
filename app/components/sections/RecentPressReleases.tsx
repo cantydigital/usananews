@@ -1,14 +1,15 @@
-import Image from "next/image";
 import Link from "next/link";
 import { useId } from "react";
-import { CalendarIcon, ChevronRightIcon } from "@/app/components/header/icons";
-import { formatDate } from "@/app/components/posts";
+import { ChevronRightIcon } from "@/app/components/header/icons";
+import PressReleaseListItem from "@/app/components/press-release/PressReleaseListItem";
 import type { PressReleaseSummary } from "@/app/lib/wordpress";
 
 type Props = {
   releases: PressReleaseSummary[];
   title?: string;
   subtitle?: string;
+  /** Shows a "View All Press Releases" button when set. */
+  viewAllHref?: string;
 };
 
 /** Centred heading over a single column of horizontal press release cards. Renders nothing when there are none. */
@@ -16,6 +17,7 @@ export default function RecentPressReleases({
   releases,
   title = "Recent Press Releases",
   subtitle = "Stay updated with the latest news and announcements",
+  viewAllHref,
 }: Props) {
   const headingId = useId();
   if (releases.length === 0) return null;
@@ -33,80 +35,23 @@ export default function RecentPressReleases({
         <ul className="mt-10 flex flex-col gap-5">
           {releases.map((release) => (
             <li key={release.href}>
-              <PressReleaseRow release={release} />
+              <PressReleaseListItem release={release} />
             </li>
           ))}
         </ul>
+
+        {viewAllHref && (
+          <div className="mt-8 flex justify-center">
+            <Link
+              href={viewAllHref}
+              className="inline-flex items-center gap-2 rounded-lg bg-white px-5 py-2.5 text-sm font-semibold text-neutral-900 shadow-sm ring-1 ring-black/10 transition hover:bg-[var(--header-brand)] hover:text-white"
+            >
+              View All Press Releases
+              <ChevronRightIcon className="h-4 w-4" />
+            </Link>
+          </div>
+        )}
       </div>
     </section>
-  );
-}
-
-function PressReleaseRow({ release }: { release: PressReleaseSummary }) {
-  return (
-    <article className="group relative flex flex-col gap-5 rounded-2xl bg-white p-5 shadow-sm ring-1 ring-black/10 transition hover:shadow-md sm:flex-row sm:p-6">
-      <div className="relative aspect-[3/2] shrink-0 overflow-hidden rounded-xl bg-neutral-100 sm:w-44 sm:self-start">
-        {release.image ? (
-          <Image
-            src={release.image.url}
-            alt={release.image.alt}
-            fill
-            sizes="(min-width: 640px) 176px, 100vw"
-            className="object-cover transition duration-500 group-hover:scale-105"
-          />
-        ) : (
-          <div
-            aria-hidden
-            className="absolute inset-0 bg-[radial-gradient(circle_at_75%_20%,#7a68b5_0%,var(--header-brand)_45%,#2b2248_100%)]"
-          />
-        )}
-      </div>
-
-      <div className="flex min-w-0 flex-col">
-        {release.category && (
-          <span className="self-start rounded-md px-2 py-0.5 text-xs font-medium text-neutral-800 ring-1 ring-neutral-300">
-            {release.category}
-          </span>
-        )}
-
-        <h3 className="mt-2 line-clamp-2 text-lg font-bold leading-snug text-neutral-900">
-          <Link href={release.href} className="underline-offset-4 group-hover:underline">
-            {/* Stretch the link so the whole card is clickable */}
-            <span aria-hidden className="absolute inset-0" />
-            {release.title}
-          </Link>
-        </h3>
-
-        {release.subtitle && <p className="mt-1 line-clamp-1 text-sm text-neutral-600">{release.subtitle}</p>}
-
-        <p className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-neutral-500">
-          <span className="flex items-center gap-1.5">
-            <CalendarIcon className="h-3.5 w-3.5" />
-            <time dateTime={release.date}>{formatDate(release.date)}</time>
-          </span>
-          {release.company && (
-            <>
-              <span aria-hidden>•</span>
-              <span>{release.company}</span>
-            </>
-          )}
-          {release.contactName && (
-            <>
-              <span aria-hidden>•</span>
-              <span>By {release.contactName}</span>
-            </>
-          )}
-        </p>
-
-        {release.excerpt && (
-          <p className="mt-2 line-clamp-2 text-sm leading-relaxed text-neutral-600">{release.excerpt}</p>
-        )}
-
-        <span className="mt-3 flex items-center gap-1.5 text-sm font-semibold text-[var(--header-brand)]">
-          Read More
-          <ChevronRightIcon className="h-4 w-4 transition group-hover:translate-x-0.5" />
-        </span>
-      </div>
-    </article>
   );
 }

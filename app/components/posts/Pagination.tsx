@@ -6,6 +6,8 @@ type Props = {
   basePath: string;
   current: number;
   total: number;
+  /** Builds each page's link instead, e.g. to keep search filters in the query string. */
+  href?: (page: number) => string;
 };
 
 export function pageHref(basePath: string, page: number) {
@@ -23,13 +25,13 @@ const itemClass =
   "inline-flex h-10 min-w-10 items-center justify-center rounded-md px-3 text-sm font-semibold transition-colors";
 
 /** Previous / numbered / next links for paged listings. Renders nothing for a single page. */
-export default function Pagination({ basePath, current, total }: Props) {
+export default function Pagination({ basePath, current, total, href = (page) => pageHref(basePath, page) }: Props) {
   if (total <= 1) return null;
 
   return (
     <nav aria-label="Pagination" className="flex flex-wrap items-center justify-center gap-2">
       {current > 1 && (
-        <Link href={pageHref(basePath, current - 1)} rel="prev" className={`${itemClass} gap-1 text-neutral-700 hover:bg-black/5`}>
+        <Link href={href(current - 1)} rel="prev" className={`${itemClass} gap-1 text-neutral-700 hover:bg-black/5`}>
           <ChevronLeftIcon className="h-4 w-4" />
           Previous
         </Link>
@@ -43,7 +45,7 @@ export default function Pagination({ basePath, current, total }: Props) {
           ) : (
             <li key={page}>
               <Link
-                href={pageHref(basePath, page)}
+                href={href(page)}
                 aria-current={page === current ? "page" : undefined}
                 aria-label={`Page ${page}`}
                 className={`${itemClass} ${
@@ -59,7 +61,7 @@ export default function Pagination({ basePath, current, total }: Props) {
         )}
       </ol>
       {current < total && (
-        <Link href={pageHref(basePath, current + 1)} rel="next" className={`${itemClass} gap-1 text-neutral-700 hover:bg-black/5`}>
+        <Link href={href(current + 1)} rel="next" className={`${itemClass} gap-1 text-neutral-700 hover:bg-black/5`}>
           Next
           <ChevronRightIcon className="h-4 w-4" />
         </Link>
