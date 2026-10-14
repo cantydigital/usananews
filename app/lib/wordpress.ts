@@ -1395,6 +1395,30 @@ export async function getSiteInfo(): Promise<{ name: string; tagline: string | n
   }
 }
 
+/**
+ * "Administration Email Address" from WordPress Settings → General, or null if unavailable. Server-only:
+ * WordPress shows it only to administrators, so the WORDPRESS_USERNAME user needs that role.
+ */
+export async function getAdminEmail(): Promise<string | null> {
+  try {
+    const data = await wpQuery<{ generalSettings: { email: string | null } | null }>(
+      /* GraphQL */ `
+        query AdminEmail {
+          generalSettings {
+            email
+          }
+        }
+      `,
+      {},
+      { tags: ["wordpress", "site-settings"] },
+    );
+    return clean(data.generalSettings?.email);
+  } catch (error) {
+    console.warn("No WordPress admin email:", (error as Error).message);
+    return null;
+  }
+}
+
 export type FeaturedCategory = {
   label: string;
   /** WordPress category slug. */

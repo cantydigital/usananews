@@ -2,6 +2,7 @@
 
 import { Resend } from "resend";
 import {
+  getAdminEmail,
   getSubmissionCategories,
   savePressReleaseSubmission,
   type PressReleaseSubmission,
@@ -62,7 +63,10 @@ async function validate(values: PressReleaseSubmission, categories: SubmissionCa
 const escape = (text: string) => text.replace(/[&<>"']/g, (char) => `&#${char.charCodeAt(0)};`);
 const oneLine = (text: string) => text.replace(/[\r\n]+/g, " ").trim();
 
-/** Tells the editorial team about the submission. The image is attached so nothing is lost if WordPress was down. */
+/**
+ * Tells the editorial team (PRESS_RELEASE_EMAIL_TO) and the WordPress admin email about the submission.
+ * The image is attached so nothing is lost if WordPress was down.
+ */
 async function sendNotificationEmail(
   values: PressReleaseSubmission,
   categoryName: string,
@@ -70,10 +74,16 @@ async function sendNotificationEmail(
   editUrl: string | null,
 ) {
   const apiKey = process.env.RESEND_API_KEY;
-  const to = (process.env.PRESS_RELEASE_EMAIL_TO ?? "").split(/[,;\s]+/).filter(Boolean);
   const from = process.env.PRESS_RELEASE_EMAIL_FROM;
   if (!apiKey) throw new Error("RESEND_API_KEY is not set");
-  if (to.length === 0 || !from) throw new Error("PRESS_RELEASE_EMAIL_TO and PRESS_RELEASE_EMAIL_FROM must be set");
+  if (!from) throw new Error("PRESS_RELEASE_EMAIL_FROM is not set");
+
+  const adminEmail = await getAdminEmail();
+  const recipients = [...(process.env.PRESS_RELEASE_EMAIL_TO ?? "").split(/[,;\s]+/), adminEmail ?? ""];
+  // One copy each, even if the admin address is also in PRESS_RELEASE_EMAIL_TO.
+  const byAddress = new Map(recipients.filter((address) => EMAIL.test(address)).map((address) => [address.toLowerCase(), address]));
+  const to = [...byAddress.values()];
+  if (to.length === 0) throw new Error("No recipients: set PRESS_RELEASE_EMAIL_TO or the WordPress admin email");
 
   const rows: [string, string][] = [
     ["Title", values.title],
