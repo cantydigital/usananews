@@ -1,7 +1,7 @@
 import { fillWithPlaceholders } from "@/app/components/posts";
-import { CategoryTabs, HeroBanner, PostGrid, PromoBanner } from "@/app/components/sections";
+import { CategoryTabs, FeaturedPressReleases, HeroBanner, PostGrid, PromoBanner } from "@/app/components/sections";
 import { seoMetadata } from "@/app/lib/seo";
-import { getHomepageCta, getLatestPosts } from "@/app/lib/wordpress";
+import { getFeaturedPressReleases, getHomepageCta, getLatestPosts } from "@/app/lib/wordpress";
 
 export function generateMetadata() {
   return seoMetadata("/");
@@ -9,9 +9,14 @@ export function generateMetadata() {
 
 const HERO_COUNT = 4;
 const TOP_STORIES_COUNT = 4;
+const FEATURED_PRESS_RELEASES_COUNT = 3;
 
 export default async function Home() {
-  const [latest, cta] = await Promise.all([getLatestPosts(HERO_COUNT + TOP_STORIES_COUNT), getHomepageCta()]);
+  const [latest, cta, pressReleases] = await Promise.all([
+    getLatestPosts(HERO_COUNT + TOP_STORIES_COUNT),
+    getHomepageCta(),
+    getFeaturedPressReleases(FEATURED_PRESS_RELEASES_COUNT),
+  ]);
   const posts = fillWithPlaceholders(latest, HERO_COUNT + TOP_STORIES_COUNT);
 
   return (
@@ -26,6 +31,8 @@ export default async function Home() {
           cta={cta.button}
         />
       )}
+      {/* Press releases with "Feature Press Release" ticked */}
+      <FeaturedPressReleases releases={pressReleases} />
       <PostGrid title="Top Stories" posts={posts.slice(HERO_COUNT)} viewAllHref="/news" />
       <CategoryTabs />
     </main>

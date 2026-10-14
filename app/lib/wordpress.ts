@@ -1328,7 +1328,8 @@ function toParagraphs(text: string) {
 }
 
 /**
- * REST API base URL and auth header for saving form submissions. Uses WORDPRESS_FORMS_USERNAME /
+ * REST API base URL and auth header, used for saving form submissions and reading fields GraphQL doesn't
+ * expose. Uses WORDPRESS_FORMS_USERNAME /
  * WORDPRESS_FORMS_APP_PASSWORD when set (a low-privilege user is recommended), otherwise the main
  * WordPress credentials.
  */
@@ -1472,6 +1473,100 @@ export async function savePressReleaseSubmission(release: PressReleaseSubmission
   }
   const { id } = (await res.json()) as { id: number };
   return `${base.replace(/\/wp-json\/wp\/v2$/, "")}/wp-admin/post.php?post=${id}&action=edit`;
+}
+
+export type PressReleaseSummary = {
+  title: string;
+  href: string;
+  subtitle: string | null;
+  excerpt: string;
+  date: string;
+  company: string | null;
+  category: string | null;
+  image: { url: string; alt: string; width: number; height: number } | null;
+};
+
+type PressReleaseNode = {
+  date: string;
+  link: string;
+  title: { rendered: string };
+  content: { rendered: string };
+  acf: {
+    subtitle?: string | null;
+    contact_details?: { company?: string | null } | null;
+    feature_press_release?: boolean | null;
+  } | null;
+  _embedded?: {
+    "wp:featuredmedia"?: {
+      source_url?: string;
+      alt_text?: string;
+      media_details?: { width?: number; height?: number };
+    }[];
+    "wp:term"?: { taxonomy: string; name: string }[][];
+  };
+};
+
+/** Recent press releases searched for featured ones; ACF fields can't be filtered on server-side. */
+const FEATURED_PRESS_RELEASE_SCAN = 50;
+
+/**
+ * Newest published press releases with "Feature Press Release" ticked, from the REST API: the ACF
+ * Press Release field group isn't shown in GraphQL. Returns [] if none are featured or WordPress
+ * can't be reached.
+ */
+export async function getFeaturedPressReleases(count = 3): Promise<PressReleaseSummary[]> {
+  const fetchNodes = async () => {
+    const { base, authorization } = formsRestApi();
+    const url =
+      `${base}/press-release?status=publish&per_page=${FEATURED_PRESS_RELEASE_SCAN}` +
+      "&_embed=wp:featuredmedia,wp:term&_fields=date,link,title,content,acf,_links,_embedded";
+    const res = await withRequestSlot(() =>
+      fetch(url, { headers: { Authorization: authorization }, cache: "no-store", signal: AbortSignal.timeout(20_000) }),
+    );
+    if (!res.ok) throw new Error(`Fetching press releases failed: ${res.status}`);
+    return (await res.json()) as PressReleaseNode[];
+  };
+
+  try {
+    const nodes =
+      process.env.NODE_ENV === "development"
+        ? await fetchNodes()
+        : await unstable_cache(fetchNodes, ["wordpress-rest", "featured-press-releases"], {
+            revalidate: 300,
+            tags: ["wordpress", "press-releases"],
+          })();
+    return nodes
+      .filter((node) => node.acf?.feature_press_release)
+      .slice(0, count)
+      .map(toPressReleaseSummary);
+  } catch (error) {
+    console.warn("Hiding featured press releases:", (error as Error).message);
+    return [];
+  }
+}
+
+function toPressReleaseSummary(node: PressReleaseNode): PressReleaseSummary {
+  const title = clean(node.title.rendered) ?? "Untitled";
+  const image = node._embedded?.["wp:featuredmedia"]?.[0];
+  const category = node._embedded?.["wp:term"]?.flat().find((term) => term.taxonomy === "pr-category");
+  const excerpt = stripHtml(node.content.rendered).replace(/\s+/g, " ");
+  return {
+    title,
+    href: toSiteHref(node.link),
+    subtitle: clean(node.acf?.subtitle),
+    excerpt: excerpt.length > 240 ? `${excerpt.slice(0, 240).trimEnd()}…` : excerpt,
+    date: node.date,
+    company: clean(node.acf?.contact_details?.company),
+    category: clean(category?.name),
+    image: image?.source_url
+      ? {
+          url: image.source_url,
+          alt: image.alt_text || title,
+          width: image.media_details?.width || 1200,
+          height: image.media_details?.height || 800,
+        }
+      : null,
+  };
 }
 
 /**
