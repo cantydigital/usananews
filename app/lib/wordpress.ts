@@ -574,7 +574,29 @@ export type PageSection =
       description: string | null;
       /** Server-only: where enquiries are emailed. Never pass these to client components. */
       email: { to: string[]; from: string | null; subject: string | null };
+    }
+  | {
+      type: "pricing";
+      title: string | null;
+      /** Text under the plans, as HTML. */
+      descriptionHtml: string;
+      button: SectionLink | null;
+      plans: PricingPlan[];
     };
+
+export type SectionLink = { label: string; href: string };
+
+export type PricingPlan = {
+  name: string;
+  /** The emphasised figure, e.g. "$39". */
+  amount: string | null;
+  /** Text after the figure, e.g. "/ per release". */
+  period: string | null;
+  description: string | null;
+  features: string[];
+  button: SectionLink | null;
+  note: string | null;
+};
 
 export type FaqItem = {
   question: string;
@@ -643,6 +665,24 @@ type PageSectionNode =
       emailTo: string | null;
       emailFrom: string | null;
       emailSubject: string | null;
+    }
+  | {
+      __typename: "PageContentPageContentPricingPlanLayout";
+      title: string | null;
+      shortDescription: string | null;
+      buttonText: string | null;
+      buttonLink: string | null;
+      pricing:
+        | {
+            packageName: string | null;
+            price: string | null;
+            shortDescription: string | null;
+            buttonText: string | null;
+            buttonLink: string | null;
+            footerNote: string | null;
+            features: { featureTitle: string | null }[] | null;
+          }[]
+        | null;
     };
 
 const CONTENT_QUERY = /* GraphQL */ `
@@ -713,6 +753,23 @@ const CONTENT_QUERY = /* GraphQL */ `
               emailTo
               emailFrom
               emailSubject
+            }
+            ... on PageContentPageContentPricingPlanLayout {
+              title
+              shortDescription
+              buttonText
+              buttonLink
+              pricing {
+                packageName
+                price
+                shortDescription
+                buttonText
+                buttonLink
+                footerNote
+                features {
+                  featureTitle
+                }
+              }
             }
           }
         }
@@ -809,10 +866,49 @@ function toPageSections(rows: PageSectionNode[] | null | undefined): PageSection
             },
           },
         ];
+      case "PageContentPageContentPricingPlanLayout":
+        return [
+          {
+            type: "pricing",
+            title: clean(row.title),
+            descriptionHtml: tidyHtml(row.shortDescription),
+            button: toSectionLink(row.buttonText, row.buttonLink),
+            plans: (row.pricing ?? []).flatMap((plan): PricingPlan[] => {
+              const name = clean(plan.packageName);
+              if (!name) return [];
+              return [
+                {
+                  name,
+                  ...splitPrice(plan.price),
+                  description: clean(plan.shortDescription),
+                  features: (plan.features ?? []).flatMap((feature) => clean(feature.featureTitle) ?? []),
+                  button: toSectionLink(plan.buttonText, plan.buttonLink),
+                  note: clean(plan.footerNote),
+                },
+              ];
+            }),
+          },
+        ];
       default:
         return [];
     }
   });
+}
+
+/** A button from separate text and link fields, or null unless both are filled in. */
+function toSectionLink(label: string | null, url: string | null): SectionLink | null {
+  const text = clean(label);
+  return text && url?.trim() ? { label: text, href: toSiteHref(url.trim()) } : null;
+}
+
+/** Splits a price like "<b>$39</b> / per release" into its bold figure and the text after it. */
+function splitPrice(html: string | null): Pick<PricingPlan, "amount" | "period"> {
+  const bold = html?.match(/<(b|strong)\b[^>]*>([\s\S]*?)<\/\1>/i);
+  if (!html || !bold) return { amount: html ? stripHtml(html) || null : null, period: null };
+  return {
+    amount: stripHtml(bold[2]) || null,
+    period: stripHtml(html.replace(bold[0], "")).replace(/\s+/g, " ") || null,
+  };
 }
 
 function captionText(image: { caption: string | null } | null | undefined) {

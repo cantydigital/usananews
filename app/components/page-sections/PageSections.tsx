@@ -4,6 +4,7 @@ import ContactFormSection from "./ContactFormSection";
 import FaqSection from "./FaqSection";
 import HeroSection from "./HeroSection";
 import ImageWithTextSection from "./ImageWithTextSection";
+import PricingSection from "./PricingSection";
 
 type Props = {
   sections: PageSection[];
@@ -64,6 +65,17 @@ export default function PageSections({ sections, startsPage = false, breadcrumb,
                 description={section.description}
                 pagePath={pagePath}
                 sectionIndex={i}
+                headingLevel={first ? "h1" : "h2"}
+              />
+            );
+          case "pricing":
+            return (
+              <PricingSection
+                key={i}
+                title={section.title}
+                plans={section.plans}
+                descriptionHtml={section.descriptionHtml}
+                button={section.button}
                 headingLevel={first ? "h1" : "h2"}
               />
             );
