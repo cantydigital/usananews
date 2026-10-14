@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import Footer from "@/app/components/footer";
 import Header from "@/app/components/header";
-import { getSiteIndexable, getSiteInfo } from "@/app/lib/wordpress";
+import { getSiteFavicon, getSiteIndexable, getSiteInfo } from "@/app/lib/wordpress";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -16,7 +16,7 @@ const geistMono = Geist_Mono({
 });
 
 export async function generateMetadata(): Promise<Metadata> {
-  const [indexable, site] = await Promise.all([getSiteIndexable(), getSiteInfo()]);
+  const [indexable, site, favicon] = await Promise.all([getSiteIndexable(), getSiteInfo(), getSiteFavicon()]);
   const siteName = site?.name ?? "USANA News";
 
   // Defaults for pages without Yoast data; pages override them via seoMetadata().
@@ -25,6 +25,19 @@ export async function generateMetadata(): Promise<Metadata> {
     description: site?.tagline ?? undefined,
     // Controlled by "Site Indexing Status" in WordPress Site Settings.
     robots: { index: indexable, follow: indexable },
+    // "Site Favicon" in WordPress Site Settings, else public/favicon.ico. The fallback lives in public/
+    // rather than app/ so Next.js doesn't add a second icon link that competes with the WordPress one.
+    icons: {
+      icon: favicon
+        ? [
+            {
+              url: favicon.url,
+              ...(favicon.mimeType && { type: favicon.mimeType }),
+              ...(favicon.sizes && { sizes: favicon.sizes }),
+            },
+          ]
+        : "/favicon.ico",
+    },
   };
 }
 

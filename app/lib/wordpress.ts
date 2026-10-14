@@ -183,6 +183,65 @@ export async function getSiteLogo(): Promise<SiteLogo | null> {
   }
 }
 
+export type SiteFavicon = {
+  url: string;
+  mimeType: string | null;
+  /** e.g. "48x48"; null when WordPress doesn't know (SVGs). */
+  sizes: string | null;
+};
+
+/** "Site Favicon" from the ACF "Site Settings" options page, or null if it's empty or unavailable. */
+export async function getSiteFavicon(): Promise<SiteFavicon | null> {
+  try {
+    const data = await wpQuery<{
+      siteSettings: {
+        siteSettingsFields: {
+          siteFavicon: {
+            node: {
+              sourceUrl: string;
+              mimeType: string | null;
+              mediaDetails: { width: number | null; height: number | null } | null;
+            } | null;
+          } | null;
+        } | null;
+      } | null;
+    }>(
+      /* GraphQL */ `
+        query SiteFavicon {
+          siteSettings {
+            siteSettingsFields {
+              siteFavicon {
+                node {
+                  sourceUrl
+                  mimeType
+                  mediaDetails {
+                    width
+                    height
+                  }
+                }
+              }
+            }
+          }
+        }
+      `,
+      {},
+      { tags: ["wordpress", "site-settings"] },
+    );
+    const node = data.siteSettings?.siteSettingsFields?.siteFavicon?.node;
+    if (!node?.sourceUrl) return null;
+
+    const { width, height } = node.mediaDetails ?? {};
+    return {
+      url: node.sourceUrl,
+      mimeType: node.mimeType || null,
+      sizes: width && height ? `${width}x${height}` : null,
+    };
+  } catch (error) {
+    console.warn("Falling back to default favicon:", (error as Error).message);
+    return null;
+  }
+}
+
 type AnnouncementsResponse = {
   siteSettings: {
     siteSettingsFields: {
