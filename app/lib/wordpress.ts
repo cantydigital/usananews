@@ -566,14 +566,27 @@ export type SectionImage = { url: string; alt: string; width: number; height: nu
 /** One flexible content layout, mapped to plain data so the components don't depend on WordPress. */
 export type PageSection =
   | { type: "hero"; title: string | null; description: string | null; image: SectionImage | null }
-  | { type: "imageWithText"; html: string; image: SectionImage | null; imagePosition: "left" | "right" }
-  | { type: "faq"; title: string | null; descriptionHtml: string; items: FaqItem[] }
+  | {
+      type: "imageWithText";
+      html: string;
+      image: SectionImage | null;
+      imagePosition: "left" | "right";
+      background: SectionBackground | null;
+    }
+  | {
+      type: "faq";
+      title: string | null;
+      descriptionHtml: string;
+      items: FaqItem[];
+      background: SectionBackground | null;
+    }
   | {
       type: "contactForm";
       title: string | null;
       description: string | null;
       /** Server-only: where enquiries are emailed. Never pass these to client components. */
       email: { to: string[]; from: string | null; subject: string | null };
+      background: SectionBackground | null;
     }
   | {
       type: "pricing";
@@ -582,6 +595,7 @@ export type PageSection =
       descriptionHtml: string;
       button: SectionLink | null;
       plans: PricingPlan[];
+      background: SectionBackground | null;
     }
   | {
       type: "steps";
@@ -592,9 +606,14 @@ export type PageSection =
       bottomHtml: string;
       button: SectionLink | null;
       background: SectionBackground;
+      /** Cards per row on large screens (1–6); null picks a layout from the number of steps. */
+      perRow: number | null;
     };
 
-/** ACF "Section Background": white, a light brand tint, or the dark brand colour. */
+/**
+ * ACF "Section Background": white, a light brand tint, or the dark brand colour. Where a layout allows null,
+ * "Default" or an empty field leaves the section on the page background as it was before the field existed.
+ */
 export type SectionBackground = "light" | "medium" | "dark";
 
 export type GetStartedStep = {
@@ -603,7 +622,11 @@ export type GetStartedStep = {
   descriptionHtml: string;
   /** Shown in place of the step number when set. */
   icon: SectionImage | null;
+  /** Where the icon (or number) sits: above the title, or beside the title and text. */
+  iconPosition: StepIconPosition;
 };
+
+export type StepIconPosition = "top-left" | "top-center" | "top-right" | "left" | "right";
 
 export type SectionLink = { label: string; href: string };
 
@@ -672,12 +695,14 @@ type PageSectionNode =
       text: string | null;
       imagePosition: string[] | string | null;
       image: MediaEdge;
+      sectionBackground: string[] | string | null;
     }
   | {
       __typename: "PageContentPageContentFrequentlyAskedQuestionsLayout";
       title: string | null;
       shortDescription: string | null;
       faqs: { question: string | null; answer: string | null }[] | null;
+      sectionBackground: string[] | string | null;
     }
   | {
       __typename: "PageContentPageContentContactFormLayout";
@@ -686,6 +711,7 @@ type PageSectionNode =
       emailTo: string | null;
       emailFrom: string | null;
       emailSubject: string | null;
+      sectionBackground: string[] | string | null;
     }
   | {
       __typename: "PageContentPageContentPricingPlanLayout";
@@ -693,6 +719,7 @@ type PageSectionNode =
       shortDescription: string | null;
       buttonText: string | null;
       buttonLink: string | null;
+      sectionBackground: string[] | string | null;
       pricing:
         | {
             packageName: string | null;
@@ -713,7 +740,15 @@ type PageSectionNode =
       buttonText: string | null;
       buttonUrl: string | null;
       sectionBackground: string[] | string | null;
-      steps: { title: string | null; description: string | null; iconImage: MediaEdge }[] | null;
+      stepsColumnPerRowCount: string[] | string | null;
+      steps:
+        | {
+            title: string | null;
+            description: string | null;
+            iconImage: MediaEdge;
+            iconPosition: string[] | string | null;
+          }[]
+        | null;
     };
 
 const CONTENT_QUERY = /* GraphQL */ `
@@ -764,6 +799,7 @@ const CONTENT_QUERY = /* GraphQL */ `
             ... on PageContentPageContentImageWithTextLayout {
               text
               imagePosition
+              sectionBackground
               image {
                 node {
                   ...SectionImageFields
@@ -777,6 +813,7 @@ const CONTENT_QUERY = /* GraphQL */ `
                 question
                 answer
               }
+              sectionBackground
             }
             ... on PageContentPageContentContactFormLayout {
               sectionTitle
@@ -784,12 +821,14 @@ const CONTENT_QUERY = /* GraphQL */ `
               emailTo
               emailFrom
               emailSubject
+              sectionBackground
             }
             ... on PageContentPageContentPricingPlanLayout {
               title
               shortDescription
               buttonText
               buttonLink
+              sectionBackground
               pricing {
                 packageName
                 price
@@ -809,9 +848,11 @@ const CONTENT_QUERY = /* GraphQL */ `
               buttonText
               buttonUrl
               sectionBackground
+              stepsColumnPerRowCount
               steps {
                 title
                 description
+                iconPosition
                 iconImage {
                   node {
                     ...SectionImageFields
@@ -884,6 +925,7 @@ function toPageSections(rows: PageSectionNode[] | null | undefined): PageSection
             html: tidyHtml(row.text),
             image: toSectionImage(row.image, ""),
             imagePosition: position === "right" ? "right" : "left",
+            background: toSectionBackground(row.sectionBackground, null),
           },
         ];
       }
@@ -898,6 +940,7 @@ function toPageSections(rows: PageSectionNode[] | null | undefined): PageSection
               const answerHtml = tidyHtml(faq.answer);
               return question ? [{ question, answerHtml, answerText: stripHtml(answerHtml) }] : [];
             }),
+            background: toSectionBackground(row.sectionBackground, null),
           },
         ];
       case "PageContentPageContentContactFormLayout":
@@ -912,6 +955,7 @@ function toPageSections(rows: PageSectionNode[] | null | undefined): PageSection
               from: clean(row.emailFrom),
               subject: clean(row.emailSubject),
             },
+            background: toSectionBackground(row.sectionBackground, null),
           },
         ];
       case "PageContentPageContentPricingPlanLayout":
@@ -921,6 +965,7 @@ function toPageSections(rows: PageSectionNode[] | null | undefined): PageSection
             title: clean(row.title),
             descriptionHtml: tidyHtml(row.shortDescription),
             button: toSectionLink(row.buttonText, row.buttonLink),
+            background: toSectionBackground(row.sectionBackground, null),
             plans: (row.pricing ?? []).flatMap((plan): PricingPlan[] => {
               const name = clean(plan.packageName);
               if (!name) return [];
@@ -946,12 +991,20 @@ function toPageSections(rows: PageSectionNode[] | null | undefined): PageSection
             steps: (row.steps ?? []).flatMap((step): GetStartedStep[] => {
               const title = clean(step.title);
               return title
-                ? [{ title, descriptionHtml: tidyHtml(step.description), icon: toSectionImage(step.iconImage, "") }]
+                ? [
+                    {
+                      title,
+                      descriptionHtml: tidyHtml(step.description),
+                      icon: toSectionImage(step.iconImage, ""),
+                      iconPosition: toIconPosition(step.iconPosition),
+                    },
+                  ]
                 : [];
             }),
             bottomHtml: tidyHtml(row.bottomDescription),
             button: toSectionLink(row.buttonText, row.buttonUrl),
             background: toSectionBackground(row.sectionBackground, "dark"),
+            perRow: toPerRow(row.stepsColumnPerRowCount),
           },
         ];
       default:
@@ -960,11 +1013,32 @@ function toPageSections(rows: PageSectionNode[] | null | undefined): PageSection
   });
 }
 
-/** Reads an ACF "Section Background" select, e.g. ["Medium"]; anything else gets the fallback. */
-function toSectionBackground(value: string[] | string | null, fallback: SectionBackground): SectionBackground {
+/**
+ * Reads an ACF "Section Background" select, e.g. ["Medium"]. "Default", an empty field or anything unknown gets
+ * the fallback: the layout's look from before the field existed.
+ */
+function toSectionBackground<T extends SectionBackground | null>(
+  value: string[] | string | null,
+  fallback: T,
+): SectionBackground | T {
   // ACF selects arrive as a list of the chosen labels.
   const choice = [value].flat()[0]?.trim().toLowerCase();
-  return choice === "light" || choice === "medium" || choice === "dark" ? choice : fallback;
+  if (choice === "light" || choice === "medium" || choice === "dark") return choice;
+  return fallback; // "default", empty or unknown
+}
+
+/** Reads a "per row" select, e.g. ["4"], as a whole number from 1 to 6, or null when empty or anything else. */
+function toPerRow(value: string[] | string | null): number | null {
+  const count = Number.parseInt([value].flat()[0] ?? "", 10);
+  return count >= 1 && count <= 6 ? count : null;
+}
+
+/** Reads an "Icon Position" select, e.g. ["Top Center"]; empty or unknown values sit top left. */
+function toIconPosition(value: string[] | string | null): StepIconPosition {
+  // "Top Center" → "top-center"; also accepts the British "Top Centre".
+  const choice = ([value].flat()[0] ?? "").trim().toLowerCase().replace(/\s+/g, "-").replace("centre", "center");
+  const positions: StepIconPosition[] = ["top-left", "top-center", "top-right", "left", "right"];
+  return positions.find((position) => position === choice) ?? "top-left";
 }
 
 /** A button from separate text and link fields, or null unless both are filled in. */

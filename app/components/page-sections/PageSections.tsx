@@ -17,6 +17,11 @@ type Props = {
   pagePath: string;
 };
 
+/** True for a section drawn on a full-width coloured band (any "Section Background" choice). */
+function hasBand(section: PageSection | undefined) {
+  return section !== undefined && "background" in section && section.background !== null;
+}
+
 /** Renders flexible content sections in the order they're arranged in WordPress. */
 export default function PageSections({ sections, startsPage = false, breadcrumb, pagePath }: Props) {
   if (sections.length === 0) return null;
@@ -24,79 +29,92 @@ export default function PageSections({ sections, startsPage = false, breadcrumb,
   return (
     <div className="flex flex-col gap-12 lg:gap-16">
       {sections.map((section, i) => {
-        const first = startsPage && i === 0;
-        switch (section.type) {
-          case "hero":
-            return (
-              <HeroSection
-                key={i}
-                title={section.title}
-                description={section.description}
-                image={section.image}
-                breadcrumb={first ? breadcrumb : undefined}
-                headingLevel={first ? "h1" : "h2"}
-                priority={first}
-              />
-            );
-          case "imageWithText":
-            return (
-              <ImageWithTextSection
-                key={i}
-                html={section.html}
-                image={section.image}
-                imagePosition={section.imagePosition}
-              />
-            );
-          case "faq":
-            return (
-              <FaqSection
-                key={i}
-                title={section.title}
-                descriptionHtml={section.descriptionHtml}
-                items={section.items}
-                headingLevel={first ? "h1" : "h2"}
-              />
-            );
-          case "contactForm":
-            // Only the title and description go to the page; email settings stay on the server.
-            return (
-              <ContactFormSection
-                key={i}
-                title={section.title}
-                description={section.description}
-                pagePath={pagePath}
-                sectionIndex={i}
-                headingLevel={first ? "h1" : "h2"}
-              />
-            );
-          case "pricing":
-            return (
-              <PricingSection
-                key={i}
-                title={section.title}
-                plans={section.plans}
-                descriptionHtml={section.descriptionHtml}
-                button={section.button}
-                headingLevel={first ? "h1" : "h2"}
-              />
-            );
-          case "steps":
-            // Full-width bands sit flush against each other rather than with a strip of page between.
-            return (
-              <div key={i} className={sections[i - 1]?.type === "steps" ? "-mt-12 lg:-mt-16" : undefined}>
-                <GetStartedSection
-                  title={section.title}
-                  description={section.description}
-                  steps={section.steps}
-                  bottomHtml={section.bottomHtml}
-                  button={section.button}
-                  background={section.background}
-                  headingLevel={first ? "h1" : "h2"}
-                />
-              </div>
-            );
-        }
+        // Neighbouring bands sit flush against each other rather than with a strip of page between.
+        const flush = hasBand(section) && hasBand(sections[i - 1]);
+        return (
+          <div key={i} className={flush ? "-mt-12 lg:-mt-16" : undefined}>
+            {renderSection(section, i, startsPage && i === 0, breadcrumb, pagePath)}
+          </div>
+        );
       })}
     </div>
   );
+}
+
+function renderSection(
+  section: PageSection,
+  index: number,
+  first: boolean,
+  breadcrumb: BreadcrumbItem[] | undefined,
+  pagePath: string,
+) {
+  const headingLevel = first ? "h1" : "h2";
+  switch (section.type) {
+    case "hero":
+      return (
+        <HeroSection
+          title={section.title}
+          description={section.description}
+          image={section.image}
+          breadcrumb={first ? breadcrumb : undefined}
+          headingLevel={headingLevel}
+          priority={first}
+        />
+      );
+    case "imageWithText":
+      return (
+        <ImageWithTextSection
+          html={section.html}
+          image={section.image}
+          imagePosition={section.imagePosition}
+          background={section.background}
+        />
+      );
+    case "faq":
+      return (
+        <FaqSection
+          title={section.title}
+          descriptionHtml={section.descriptionHtml}
+          items={section.items}
+          headingLevel={headingLevel}
+          background={section.background}
+        />
+      );
+    case "contactForm":
+      // Only the title and description go to the page; email settings stay on the server.
+      return (
+        <ContactFormSection
+          title={section.title}
+          description={section.description}
+          pagePath={pagePath}
+          sectionIndex={index}
+          headingLevel={headingLevel}
+          background={section.background}
+        />
+      );
+    case "pricing":
+      return (
+        <PricingSection
+          title={section.title}
+          plans={section.plans}
+          descriptionHtml={section.descriptionHtml}
+          button={section.button}
+          headingLevel={headingLevel}
+          background={section.background}
+        />
+      );
+    case "steps":
+      return (
+        <GetStartedSection
+          title={section.title}
+          description={section.description}
+          steps={section.steps}
+          bottomHtml={section.bottomHtml}
+          button={section.button}
+          background={section.background}
+          perRow={section.perRow}
+          headingLevel={headingLevel}
+        />
+      );
+  }
 }

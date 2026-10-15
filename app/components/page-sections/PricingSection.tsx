@@ -1,6 +1,7 @@
 import { CheckIcon } from "@/app/components/header/icons";
-import type { PricingPlan, SectionLink } from "@/app/lib/wordpress";
+import type { PricingPlan, SectionBackground, SectionLink } from "@/app/lib/wordpress";
 import SectionButtonLink from "./SectionButtonLink";
+import { sectionTheme } from "./sectionTheme";
 
 type Props = {
   title?: string | null;
@@ -10,15 +11,16 @@ type Props = {
   /** Secondary button under the text, e.g. "Contact Us for Custom Solutions". */
   button?: SectionLink | null;
   headingLevel?: "h1" | "h2";
+  /** "Section Background" in WordPress; none keeps the page background. */
+  background?: SectionBackground | null;
 };
 
-// Styles for WordPress HTML in the text under the plans.
-const richText =
-  "[&_a]:font-semibold [&_a]:text-[var(--header-brand)] [&_a]:underline [&_a]:underline-offset-2 [&_p+p]:mt-3 [&_strong]:text-neutral-900";
+// Styles for WordPress HTML in the text under the plans; colours come from the section theme.
+const richText = "[&_a]:font-semibold [&_a]:underline [&_a]:underline-offset-2 [&_p+p]:mt-3";
 
-function PlanCard({ plan }: { plan: PricingPlan }) {
+function PlanCard({ plan, card }: { plan: PricingPlan; card: string }) {
   return (
-    <article className="flex flex-col rounded-2xl bg-white p-6 text-center shadow-sm ring-1 ring-black/10 sm:p-8">
+    <article className={`flex flex-col rounded-2xl p-6 text-center shadow-sm ring-1 ring-black/10 sm:p-8 ${card}`}>
       <h3 className="text-xl font-bold tracking-tight text-neutral-900 sm:text-2xl">{plan.name}</h3>
 
       {plan.amount && (
@@ -57,43 +59,55 @@ function PlanCard({ plan }: { plan: PricingPlan }) {
 }
 
 /** "Pricing Plan" flexible content layout: a centred title over plan cards, then optional text and a button. */
-export default function PricingSection({ title, plans, descriptionHtml, button, headingLevel: Heading = "h2" }: Props) {
+export default function PricingSection({
+  title,
+  plans,
+  descriptionHtml,
+  button,
+  headingLevel: Heading = "h2",
+  background,
+}: Props) {
   if (plans.length === 0) return null;
+  const theme = sectionTheme(background);
 
   return (
-    <section className="mx-auto w-full max-w-5xl px-4 font-sans sm:px-6 lg:px-8">
-      {title && (
-        <Heading className="text-center text-3xl font-bold tracking-tight text-neutral-900 sm:text-4xl">{title}</Heading>
-      )}
+    <section className={`w-full font-sans ${theme.band}`}>
+      <div className="mx-auto max-w-5xl px-4 sm:px-6 lg:px-8">
+        {title && (
+          <Heading className={`text-center text-3xl font-bold tracking-tight sm:text-4xl ${theme.heading}`}>
+            {title}
+          </Heading>
+        )}
 
-      <div
-        className={`mx-auto mt-10 grid gap-6 sm:gap-8 ${
-          plans.length === 1 ? "max-w-md" : plans.length === 2 ? "md:grid-cols-2" : "md:grid-cols-2 lg:grid-cols-3"
-        }`}
-      >
-        {plans.map((plan) => (
-          <PlanCard key={plan.name} plan={plan} />
-        ))}
-      </div>
-
-      {(descriptionHtml || button) && (
-        <div className="mx-auto mt-10 max-w-3xl text-center">
-          {descriptionHtml && (
-            <div
-              className={`text-sm leading-relaxed text-neutral-600 ${richText}`}
-              dangerouslySetInnerHTML={{ __html: descriptionHtml }}
-            />
-          )}
-          {button && (
-            <SectionButtonLink
-              link={button}
-              className="mt-5 inline-flex items-center rounded-lg bg-white px-5 py-2.5 text-sm font-semibold text-neutral-900 shadow-sm ring-1 ring-black/10 transition hover:bg-[var(--header-brand)] hover:text-white"
-            >
-              {button.label}
-            </SectionButtonLink>
-          )}
+        <div
+          className={`mx-auto mt-10 grid gap-6 sm:gap-8 ${
+            plans.length === 1 ? "max-w-md" : plans.length === 2 ? "md:grid-cols-2" : "md:grid-cols-2 lg:grid-cols-3"
+          }`}
+        >
+          {plans.map((plan) => (
+            <PlanCard key={plan.name} plan={plan} card={theme.card} />
+          ))}
         </div>
-      )}
+
+        {(descriptionHtml || button) && (
+          <div className="mx-auto mt-10 max-w-3xl text-center">
+            {descriptionHtml && (
+              <div
+                className={`text-sm leading-relaxed ${theme.text} ${theme.link} ${richText}`}
+                dangerouslySetInnerHTML={{ __html: descriptionHtml }}
+              />
+            )}
+            {button && (
+              <SectionButtonLink
+                link={button}
+                className="mt-5 inline-flex items-center rounded-lg bg-white px-5 py-2.5 text-sm font-semibold text-neutral-900 shadow-sm ring-1 ring-black/10 transition hover:bg-[var(--header-brand)] hover:text-white"
+              >
+                {button.label}
+              </SectionButtonLink>
+            )}
+          </div>
+        )}
+      </div>
     </section>
   );
 }

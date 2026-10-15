@@ -131,3 +131,27 @@ body {
 .post-content > :first-child {
   margin-top: 0;
 }
+
+/* Article text on a dark section band (Section Background → Dark). */
+.post-content.post-content-invert {
+  color: rgb(255 255 255 / 0.85);
+}
+.post-content-invert :is(h2, h3, h4, strong),
+.post-content-invert a,
+.post-content-invert li::marker {
+  color: #fff;
+}
+.post-content-invert blockquote {
+  border-color: rgb(255 255 255 / 0.6);
+  color: rgb(255 255 255 / 0.85);
+}
+.post-content-invert figcaption {
+  color: rgb(255 255 255 / 0.6);
+}
+.post-content-invert hr,
+.post-content-invert :is(th, td) {
+  border-color: rgb(255 255 255 / 0.2);
+}
+.post-content-invert th {
+  background: rgb(255 255 255 / 0.1);
+}

@@ -1,7 +1,8 @@
 import Image from "next/image";
 import { ArrowRightIcon } from "@/app/components/header/icons";
-import type { GetStartedStep, SectionBackground, SectionLink } from "@/app/lib/wordpress";
+import type { GetStartedStep, SectionBackground, SectionLink, StepIconPosition } from "@/app/lib/wordpress";
 import SectionButtonLink from "./SectionButtonLink";
+import { sectionThemes } from "./sectionTheme";
 
 type Props = {
   title?: string | null;
@@ -12,10 +13,15 @@ type Props = {
   button?: SectionLink | null;
   /** "Section Background" in WordPress; text and cards switch colours to suit. */
   background?: SectionBackground;
+  /**
+   * "Steps Column Per Row Count" in WordPress: cards per row across the full content width. When unset, up to
+   * four compact cards per row, picked from the number of steps.
+   */
+  perRow?: number | null;
   headingLevel?: "h1" | "h2";
 };
 
-// Shared by the light and medium themes: dark text, brand-coloured accents.
+// Step-specific colours; the band itself comes from the shared section themes.
 const onLight = {
   title: "text-neutral-900",
   description: "text-neutral-600",
@@ -26,12 +32,10 @@ const onLight = {
   button: "bg-[var(--header-brand)] text-white hover:bg-[#2b2248]",
 };
 
-const themes: Record<SectionBackground, typeof onLight & { section: string; card: string }> = {
-  light: { ...onLight, section: "bg-white", card: "bg-[var(--header-bg)] ring-black/5" },
-  // A light lavender tint of the brand colour (#534388), with white cards.
-  medium: { ...onLight, section: "bg-[#eeebf6]", card: "bg-white shadow-sm ring-black/5" },
+const themes: Record<SectionBackground, typeof onLight & { card: string }> = {
+  light: { ...onLight, card: "bg-[var(--header-bg)] ring-black/5" },
+  medium: { ...onLight, card: "bg-white shadow-sm ring-black/5" },
   dark: {
-    section: "bg-[#2b2248]",
     title: "text-white",
     description: "text-white/80",
     card: "bg-white/10 ring-white/10",
@@ -46,11 +50,82 @@ const themes: Record<SectionBackground, typeof onLight & { section: string; card
 // Styles for WordPress HTML; the link colour comes from the theme.
 const richText = "[&_a]:font-semibold [&_a]:underline [&_a]:underline-offset-2 [&_p+p]:mt-2";
 
-const columnClasses: Record<number, string> = {
-  1: "max-w-xs",
-  2: "max-w-xl sm:grid-cols-2",
-  3: "max-w-3xl sm:grid-cols-3",
+// Card widths for N per row: one per row on phones, two on tablets, N from large screens. Gaps are 1rem (gap-4).
+const cardWidths: Record<number, string> = {
+  1: "w-full",
+  2: "w-full sm:w-[calc((100%-1rem)/2)]",
+  3: "w-full sm:w-[calc((100%-1rem)/2)] lg:w-[calc((100%-2rem)/3)]",
+  4: "w-full sm:w-[calc((100%-1rem)/2)] lg:w-[calc((100%-3rem)/4)]",
+  5: "w-full sm:w-[calc((100%-1rem)/2)] lg:w-[calc((100%-4rem)/5)]",
+  6: "w-full sm:w-[calc((100%-1rem)/2)] lg:w-[calc((100%-5rem)/6)]",
 };
+
+// Without a per-row count, the cards keep a compact width centred in the section, sized by the number of steps.
+const compactWidths: Record<number, string> = { 1: "max-w-xs", 2: "max-w-xl", 3: "max-w-3xl", 4: "max-w-5xl" };
+
+type StepTheme = (typeof themes)[SectionBackground];
+
+// Text alignment, and where the icon sits within it, for icons above the title. Left and Right put it beside.
+const topPositions: Partial<Record<StepIconPosition, { text: string; icon: string }>> = {
+  "top-left": { text: "text-left", icon: "" },
+  "top-center": { text: "text-center", icon: "mx-auto" },
+  "top-right": { text: "text-right", icon: "ml-auto" },
+};
+
+/** One step: its icon (or number) above the title, or beside the title and text for Left and Right. */
+function StepCard({ step, number, theme }: { step: GetStartedStep; number: number; theme: StepTheme }) {
+  const top = topPositions[step.iconPosition];
+  const marker = (
+    <span
+      className={`flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden text-sm font-bold ${theme.number} ${
+        // A circle above the text, a rounded square beside it.
+        top ? `rounded-full ${top.icon}` : "rounded-lg"
+      }`}
+    >
+      {step.icon ? (
+        <Image
+          src={step.icon.url}
+          alt={step.icon.alt}
+          width={20}
+          height={20}
+          unoptimized
+          className="h-5 w-5 object-contain"
+        />
+      ) : (
+        number
+      )}
+    </span>
+  );
+  const text = (
+    <div className="min-w-0">
+      <h3 className={`text-base font-bold leading-snug ${top ? "mt-4" : "pt-1.5"} ${theme.title}`}>
+        {step.icon && <span className="sr-only">Step {number}: </span>}
+        {step.title}
+      </h3>
+      {step.descriptionHtml && (
+        <div
+          className={`mt-1.5 text-sm leading-relaxed ${theme.stepText} ${theme.link} ${richText}`}
+          dangerouslySetInnerHTML={{ __html: step.descriptionHtml }}
+        />
+      )}
+    </div>
+  );
+
+  if (!top) {
+    return (
+      <div className={`flex gap-4 ${step.iconPosition === "right" ? "flex-row-reverse" : ""}`}>
+        {marker}
+        {text}
+      </div>
+    );
+  }
+  return (
+    <div className={top.text}>
+      {marker}
+      {text}
+    </div>
+  );
+}
 
 /** "Get Started Steps" flexible content layout: numbered steps on a full-width band, then text and a button. */
 export default function GetStartedSection({
@@ -60,13 +135,18 @@ export default function GetStartedSection({
   bottomHtml,
   button,
   background = "dark",
+  perRow,
   headingLevel: Heading = "h2",
 }: Props) {
   if (steps.length === 0) return null;
   const theme = themes[background];
+  // With a per-row count the cards span the full content width, like the other sections; rows that aren't full
+  // (or fewer steps than the count) are centred.
+  const columns = perRow ?? Math.min(steps.length, 4);
+  const listWidth = perRow ? "" : compactWidths[columns];
 
   return (
-    <section className={`w-full py-16 font-sans lg:py-20 ${theme.section}`}>
+    <section className={`w-full font-sans ${sectionThemes[background].band}`}>
       <div className="mx-auto max-w-7xl px-4 text-center sm:px-6 lg:px-8">
         {title && (
           <Heading className={`text-3xl font-bold tracking-tight sm:text-4xl ${theme.title}`}>{title}</Heading>
@@ -76,38 +156,11 @@ export default function GetStartedSection({
         )}
 
         <ol
-          className={`mx-auto mt-10 grid gap-4 text-left ${
-            columnClasses[steps.length] ?? "max-w-5xl sm:grid-cols-2 lg:grid-cols-4"
-          }`}
+          className={`mx-auto flex flex-wrap justify-center gap-4 text-left ${title || description ? "mt-10" : ""} ${listWidth}`}
         >
           {steps.map((step, i) => (
-            <li key={`${step.title}-${i}`} className={`rounded-xl p-5 ring-1 ${theme.card}`}>
-              <span
-                className={`flex h-9 w-9 items-center justify-center overflow-hidden rounded-full text-sm font-bold ${theme.number}`}
-              >
-                {step.icon ? (
-                  <Image
-                    src={step.icon.url}
-                    alt={step.icon.alt}
-                    width={20}
-                    height={20}
-                    unoptimized
-                    className="h-5 w-5 object-contain"
-                  />
-                ) : (
-                  i + 1
-                )}
-              </span>
-              <h3 className={`mt-4 text-base font-bold leading-snug ${theme.title}`}>
-                {step.icon && <span className="sr-only">Step {i + 1}: </span>}
-                {step.title}
-              </h3>
-              {step.descriptionHtml && (
-                <div
-                  className={`mt-1.5 text-sm leading-relaxed ${theme.stepText} ${theme.link} ${richText}`}
-                  dangerouslySetInnerHTML={{ __html: step.descriptionHtml }}
-                />
-              )}
+            <li key={`${step.title}-${i}`} className={`rounded-xl p-5 ring-1 ${cardWidths[columns]} ${theme.card}`}>
+              <StepCard step={step} number={i + 1} theme={theme} />
             </li>
           ))}
         </ol>

@@ -1,7 +1,8 @@
 import { socialNetworks } from "@/app/components/header/Header";
 import { MailIcon } from "@/app/components/header/icons";
-import { getSocialLinks } from "@/app/lib/wordpress";
+import { getSocialLinks, type SectionBackground } from "@/app/lib/wordpress";
 import ContactForm from "./ContactForm";
+import { sectionTheme } from "./sectionTheme";
 
 type Props = {
   title?: string | null;
@@ -10,29 +11,35 @@ type Props = {
   pagePath: string;
   sectionIndex: number;
   headingLevel?: "h1" | "h2";
+  /** "Section Background" in WordPress; none keeps the original light brand tint behind the top of the card. */
+  background?: SectionBackground | null;
 };
 
-/** Centred title over a tinted band, then a card with a brand panel beside the enquiry form. */
+/** Centred title over a coloured band, then a card with a brand panel beside the enquiry form. */
 export default async function ContactFormSection({
   title,
   description,
   pagePath,
   sectionIndex,
   headingLevel: Heading = "h2",
+  background,
 }: Props) {
   const socialLinks = await getSocialLinks();
+  const theme = sectionTheme(background);
 
   return (
-    <section className="relative isolate w-full py-12 font-sans lg:py-16">
-      <div aria-hidden className="absolute inset-x-0 top-0 -z-10 h-2/3 bg-[var(--header-brand)]/[0.06]" />
+    <section className={`relative isolate w-full font-sans ${background ? theme.band : "py-12 lg:py-16"}`}>
+      {!background && (
+        <div aria-hidden className="absolute inset-x-0 top-0 -z-10 h-2/3 bg-[var(--header-brand)]/[0.06]" />
+      )}
 
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
         {(title || description) && (
           <div className="mx-auto mb-10 max-w-2xl text-center">
             {title && (
-              <Heading className="text-3xl font-bold tracking-tight text-neutral-900 sm:text-4xl">{title}</Heading>
+              <Heading className={`text-3xl font-bold tracking-tight sm:text-4xl ${theme.heading}`}>{title}</Heading>
             )}
-            {description && <p className="mt-3 text-base text-neutral-600 sm:text-lg">{description}</p>}
+            {description && <p className={`mt-3 text-base sm:text-lg ${theme.text}`}>{description}</p>}
           </div>
         )}
 
