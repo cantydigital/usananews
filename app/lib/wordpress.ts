@@ -1469,6 +1469,124 @@ export async function getSiteInfo(): Promise<{ name: string; tagline: string | n
   }
 }
 
+export type SitemapEntry = {
+  /** Site path, e.g. "/about-us". */
+  path: string;
+  /** Last edit, as an ISO date in UTC. */
+  lastModified: string;
+  kind: "page" | "post" | "pressRelease";
+};
+
+type SitemapNodesResponse = {
+  [type in "posts" | "pages"]?: {
+    pageInfo: { hasNextPage: boolean; endCursor: string | null };
+    nodes: { uri: string | null; modifiedGmt: string | null; isFrontPage?: boolean }[];
+  } | null;
+};
+
+const SITEMAP_POSTS_QUERY = /* GraphQL */ `
+  query SitemapPosts($after: String) {
+    posts(first: 100, after: $after) {
+      pageInfo {
+        hasNextPage
+        endCursor
+      }
+      nodes {
+        uri
+        modifiedGmt
+      }
+    }
+  }
+`;
+
+const SITEMAP_PAGES_QUERY = /* GraphQL */ `
+  query SitemapPages($after: String) {
+    pages(first: 100, after: $after) {
+      pageInfo {
+        hasNextPage
+        endCursor
+      }
+      nodes {
+        uri
+        modifiedGmt
+        isFrontPage
+      }
+    }
+  }
+`;
+
+// Stops a runaway loop if WordPress keeps reporting more pages: 50 × 100 items.
+const MAX_SITEMAP_BATCHES = 50;
+
+/** Every published post or page as uri + modified date, walking WPGraphQL's cursors 100 at a time. */
+async function allContentNodes(type: "posts" | "pages") {
+  const nodes: { uri: string | null; modifiedGmt: string | null; isFrontPage?: boolean }[] = [];
+  let after: string | null = null;
+  for (let batch = 0; batch < MAX_SITEMAP_BATCHES; batch++) {
+    const data: SitemapNodesResponse = await wpQuery<SitemapNodesResponse>(
+      type === "posts" ? SITEMAP_POSTS_QUERY : SITEMAP_PAGES_QUERY,
+      { after },
+      { tags: ["wordpress", type] },
+    );
+    const connection = data[type];
+    nodes.push(...(connection?.nodes ?? []));
+    if (!connection?.pageInfo.hasNextPage || !connection.pageInfo.endCursor) break;
+    after = connection.pageInfo.endCursor;
+  }
+  return nodes;
+}
+
+/** Every published press release as link + modified date, from the REST API 100 at a time. */
+async function allPressReleaseNodes() {
+  const nodes: { link: string; modified_gmt: string }[] = [];
+  for (let page = 1; page <= MAX_SITEMAP_BATCHES; page++) {
+    const result = await fetchRestPage<{ link: string; modified_gmt: string }>(
+      "press-release",
+      { page: String(page), per_page: "100", _fields: "link,modified_gmt" },
+      ["wordpress", "press-releases"],
+    );
+    nodes.push(...result.nodes);
+    if (page >= result.totalPages) break;
+  }
+  return nodes;
+}
+
+/** WordPress GMT dates have no zone, e.g. "2026-10-14T11:30:03"; mark them as UTC. */
+function gmtDate(value: string | null) {
+  return value ? `${value.replace(/Z$/, "")}Z` : new Date().toISOString();
+}
+
+/**
+ * Published pages (except the front page), posts and press releases for sitemap.xml, as site paths with their
+ * last edit. Throws if WordPress can't be reached, so a partial sitemap is never served.
+ */
+export async function getSitemapEntries(): Promise<SitemapEntry[]> {
+  const [posts, pages, pressReleases] = await Promise.all([
+    allContentNodes("posts"),
+    allContentNodes("pages"),
+    allPressReleaseNodes(),
+  ]);
+  const toPath = (uri: string | null) => uri?.replace(/\/+$/, "") || null;
+
+  return [
+    ...pages.flatMap((page): SitemapEntry[] => {
+      const path = toPath(page.uri);
+      return path && !page.isFrontPage ? [{ path, lastModified: gmtDate(page.modifiedGmt), kind: "page" }] : [];
+    }),
+    ...posts.flatMap((post): SitemapEntry[] => {
+      const path = toPath(post.uri);
+      return path ? [{ path, lastModified: gmtDate(post.modifiedGmt), kind: "post" }] : [];
+    }),
+    ...pressReleases.map(
+      (release): SitemapEntry => ({
+        path: toSiteHref(release.link),
+        lastModified: gmtDate(release.modified_gmt),
+        kind: "pressRelease",
+      }),
+    ),
+  ];
+}
+
 /**
  * "Administration Email Address" from WordPress Settings → General, or null if unavailable. Server-only:
  * WordPress shows it only to administrators, so the WORDPRESS_USERNAME user needs that role.
