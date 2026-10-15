@@ -605,7 +605,7 @@ export type PageSection =
       /** Text under the steps, as HTML. */
       bottomHtml: string;
       button: SectionLink | null;
-      background: SectionBackground;
+      background: SectionBackground | null;
       /** Cards per row on large screens (1–6); null picks a layout from the number of steps. */
       perRow: number | null;
     };
@@ -1003,7 +1003,7 @@ function toPageSections(rows: PageSectionNode[] | null | undefined): PageSection
             }),
             bottomHtml: tidyHtml(row.bottomDescription),
             button: toSectionLink(row.buttonText, row.buttonUrl),
-            background: toSectionBackground(row.sectionBackground, "dark"),
+            background: toSectionBackground(row.sectionBackground, null),
             perRow: toPerRow(row.stepsColumnPerRowCount),
           },
         ];

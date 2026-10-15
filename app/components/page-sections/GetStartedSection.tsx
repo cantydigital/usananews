@@ -11,8 +11,8 @@ type Props = {
   /** Text under the steps, as HTML. */
   bottomHtml?: string;
   button?: SectionLink | null;
-  /** "Section Background" in WordPress; text and cards switch colours to suit. */
-  background?: SectionBackground;
+  /** "Section Background" in WordPress; text and cards switch colours to suit. None sits on the page background. */
+  background?: SectionBackground | null;
   /**
    * "Steps Column Per Row Count" in WordPress: cards per row across the full content width. When unset, up to
    * four compact cards per row, picked from the number of steps.
@@ -32,7 +32,9 @@ const onLight = {
   button: "bg-[var(--header-brand)] text-white hover:bg-[#2b2248]",
 };
 
-const themes: Record<SectionBackground, typeof onLight & { card: string }> = {
+const themes: Record<SectionBackground | "none", typeof onLight & { card: string }> = {
+  // "Default": no band, white cards on the page background.
+  none: { ...onLight, card: "bg-white shadow-sm ring-black/5" },
   light: { ...onLight, card: "bg-[var(--header-bg)] ring-black/5" },
   medium: { ...onLight, card: "bg-white shadow-sm ring-black/5" },
   dark: {
@@ -63,7 +65,7 @@ const cardWidths: Record<number, string> = {
 // Without a per-row count, the cards keep a compact width centred in the section, sized by the number of steps.
 const compactWidths: Record<number, string> = { 1: "max-w-xs", 2: "max-w-xl", 3: "max-w-3xl", 4: "max-w-5xl" };
 
-type StepTheme = (typeof themes)[SectionBackground];
+type StepTheme = (typeof themes)[keyof typeof themes];
 
 // Text alignment, and where the icon sits within it, for icons above the title. Left and Right put it beside.
 const topPositions: Partial<Record<StepIconPosition, { text: string; icon: string }>> = {
@@ -134,19 +136,19 @@ export default function GetStartedSection({
   steps,
   bottomHtml,
   button,
-  background = "dark",
+  background = null,
   perRow,
   headingLevel: Heading = "h2",
 }: Props) {
   if (steps.length === 0) return null;
-  const theme = themes[background];
+  const theme = themes[background ?? "none"];
   // With a per-row count the cards span the full content width, like the other sections; rows that aren't full
   // (or fewer steps than the count) are centred.
   const columns = perRow ?? Math.min(steps.length, 4);
   const listWidth = perRow ? "" : compactWidths[columns];
 
   return (
-    <section className={`w-full font-sans ${sectionThemes[background].band}`}>
+    <section className={`w-full font-sans ${sectionThemes[background ?? "none"].band}`}>
       <div className="mx-auto max-w-7xl px-4 text-center sm:px-6 lg:px-8">
         {title && (
           <Heading className={`text-3xl font-bold tracking-tight sm:text-4xl ${theme.title}`}>{title}</Heading>
